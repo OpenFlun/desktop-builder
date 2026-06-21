@@ -1,0 +1,63 @@
+{
+  "name": "@flun/desktop-builder",
+  "version": "1.0.0",
+  "description": "将任意 Node.js 网站打包为跨平台桌面应用 (Electron)，支持高度自定义配置。",
+  "type": "module",
+  "types": "index.d.ts",
+  "exports": {
+    ".": "./index.js"
+  },
+  "main": "index.js",
+  "bin": {
+    "desktop-builder": "./index.js"
+  },
+  "scripts": {
+    "postinstall": "node copy-files.js 2>&1"
+  },
+  "keywords": [
+    "electron",
+    "desktop",
+    "nodejs",
+    "packager",
+    "installer",
+    "nsis",
+    "dmg",
+    "appimage"
+  ],
+  "author": "flun <open@flun.top>",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenFlun/desktop-builder.git"
+  },
+  "homepage": "https://github.com/OpenFlun/desktop-builder#readme",
+  "bugs": {
+    "url": "https://github.com/OpenFlun/desktop-builder/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "lib/",
+    "copy-files.js",
+    "default-icon.png",
+    "desktopAppConfig.js",
+    "electron-main.js",
+    "LICENSE",
+    "CHANGELOG.md",
+    "README.md"
+  ],
+  "dependencies": {
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
+    "execa": "^9.6.1",
+    "fs-extra": "^11.3.5",
+    "chalk": "^5.6.2"
+  },
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.0.0"
+  }
+}
