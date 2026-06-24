@@ -65,7 +65,6 @@ export default {
 	// ===== 高级选项 =====
 	advanced: {
 		autoStartServer: true,           // 是否自动启动后端服务
-		autoKillServer: true,            // 退出时是否自动关闭后端
-		serverStartupDelay: 3000,        // 启动后端后的等待时间(ms)
+		autoKillServer: true             // 退出时是否自动关闭后端
 	},
 };

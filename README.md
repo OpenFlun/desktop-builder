@@ -1,6 +1,6 @@
 # @flun/desktop-builder
 
-> 将任意 Node.js 网站一键打包为跨平台桌面应用（基于 Electron），支持高度自定义配置。
+> 将自己的任意 Node.js 网站一键打包为桌面应用（基于 Electron），支持高度自定义配置。
 
 [![npm version](https://img.shields.io/npm/v/@flun/desktop-builder.svg)](https://www.npmjs.com/package/@flun/desktop-builder)
 [![license](https://img.shields.io/npm/l/@flun/desktop-builder.svg)](https://github.com/flun/desktop-builder/blob/main/LICENSE)
@@ -10,9 +10,9 @@
 
 ## 📖 简介
 ### 本包以 ESM 模块系统编写;只要你的 Node.js 版本大于22.12,可保留CJS `require()` 语法调用,否则请使用 `import` 语法;
-`@flun/desktop-builder` 是一个用于 **将本地 Node.js Web 应用打包成桌面应用** 的构建工具。用户只需提供一个配置文件，即可生成 Windows（.exe）、macOS（.dmg）和 Linux（AppImage）的安装包。
+`@flun/desktop-builder` 是一个用于 **将本地 Nodejs Web 应用打包成桌面应用** 的构建工具。用户只需提供一个配置文件，即可生成对应的安装包。
 
-它通过 **自动嵌入 Node.js 后端服务**，让最终用户无需安装 Node.js 环境，双击图标即可运行你的网站。
+它通过 **自动嵌入 Nodejs 后端服务**，让最终用户无需安装 Nodejs 环境，双击图标即可运行你的网站。
 
 ---
 
@@ -21,7 +21,7 @@
 - 🚀 **一键打包**：基于 `electron-builder`，快速生成安装包。
 - ⚙️ **高度可配置**：通过单一 `desktopAppConfig.js` 控制窗口尺寸、图标、安装选项等。
 - 🖥️ **跨平台支持**：输出 Windows、macOS、Linux 三平台安装程序。
-- 🔌 **自动启动服务**：应用启动时自动运行你的 Node.js 后端。
+- 🔌 **自动启动服务**：应用启动时自动运行你的 Nodejs 后端。
 - 📦 **静默安装选项**：支持 NSIS 安装包自定义（一键安装/向导安装）。
 - 🎨 **品牌自定义**：可设置应用图标、名称、版本等。
 
