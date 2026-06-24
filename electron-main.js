@@ -8,13 +8,9 @@ import http from 'http';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// ===== 强制系统网络栈 + 实验性平台特性 =====
-app.commandLine.appendSwitch('no-sandbox');
-app.commandLine.appendSwitch('disable-features', 'UseDnsHttpsSvcb');
-app.commandLine.appendSwitch('enable-features', 'NetworkService');
-app.commandLine.appendSwitch('ignore-certificate-errors');
-app.commandLine.appendSwitch('enable-experimental-web-platform-features');
-
+// ============================================================
+// 配置（由 build.js 注入）
+// ============================================================
 const CONFIG = {
   APP_URL: JSON.parse('__APP_URL__'),
   WINDOW_CONFIG: JSON.parse('__WINDOW_CONFIG__'),
@@ -28,6 +24,47 @@ let mainWindow = null;
 let serverProcess = null;
 let loadFailed = false;
 let windowCreationPromise = null;
+let loadRetryCount = 0;
+
+// ============================================================
+// 动态设置命令行开关（从 APP_URL 中提取主机名）
+// ============================================================
+try {
+  const urlObj = new URL(TARGET_URL);
+  const hostname = urlObj.hostname;
+
+  // 基础开关
+  app.commandLine.appendSwitch('no-sandbox');
+  app.commandLine.appendSwitch('ignore-certificate-errors');
+  app.commandLine.appendSwitch('disable-web-security');
+  app.commandLine.appendSwitch('allow-insecure-localhost');
+
+  // 动态映射域名到 127.0.0.1，使该域名成为安全源
+  app.commandLine.appendSwitch('host-resolver-rules', `MAP ${hostname} 127.0.0.1`);
+
+  // 启用所有 WebAuthn 特性（包括 Windows 系统 API 和 HID）
+  app.commandLine.appendSwitch('enable-features',
+    'WebAuthentication,WebAuthn,WebAuthenticationHidSupport,WebAuthenticationWindowsApi');
+  app.commandLine.appendSwitch('disable-features',
+    'UseDnsHttpsSvcb,BlockInsecurePrivateNetworkRequests');
+  app.commandLine.appendSwitch('enable-experimental-web-platform-features');
+  app.commandLine.appendSwitch('vmodule', 'webauthn*=3');
+
+  console.log(`[Electron] Mapped ${hostname} to 127.0.0.1 for WebAuthn security.`);
+} catch (err) {
+  console.error('[Electron] Failed to parse APP_URL, using fallback:', err);
+  // 如果解析失败，仍然启用基本开关
+  app.commandLine.appendSwitch('no-sandbox');
+  app.commandLine.appendSwitch('ignore-certificate-errors');
+  app.commandLine.appendSwitch('disable-web-security');
+  app.commandLine.appendSwitch('allow-insecure-localhost');
+  app.commandLine.appendSwitch('enable-features',
+    'WebAuthentication,WebAuthn,WebAuthenticationHidSupport,WebAuthenticationWindowsApi');
+  app.commandLine.appendSwitch('disable-features',
+    'UseDnsHttpsSvcb,BlockInsecurePrivateNetworkRequests');
+  app.commandLine.appendSwitch('enable-experimental-web-platform-features');
+  app.commandLine.appendSwitch('vmodule', 'webauthn*=3');
+}
 
 // ---------- 日志 ----------
 function log(message, ...args) {
@@ -60,19 +97,23 @@ if (!gotTheLock) {
   });
 }
 
-// ---------- 服务器就绪探测（强制 IPv4） ----------
-function waitForServer(url, timeout = 30000) {
+// ---------- 证书信任 ----------
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  event.preventDefault();
+  callback(true);
+});
+
+// ---------- 服务器就绪探测 ----------
+function waitForServer(url, timeout = 60000) {
   return new Promise((resolve) => {
     const startTime = Date.now();
     let timer = null;
-
     const check = () => {
       if (Date.now() - startTime > timeout) {
-        log('Server ready check timed out, proceeding anyway');
+        log('Server ready check timed out after ' + timeout + 'ms, proceeding anyway');
         resolve(false);
         return;
       }
-
       const parsed = new URL(url);
       const protocol = parsed.protocol === 'https:' ? https : http;
       const request = protocol.get({
@@ -87,21 +128,54 @@ function waitForServer(url, timeout = 30000) {
         resolve(true);
         request.destroy();
       });
-
       request.on('error', (err) => {
         log('Server not ready yet: ' + err.message);
         timer = setTimeout(check, 2000);
       });
-
       request.on('timeout', () => {
         log('Server request timeout');
         request.destroy();
         timer = setTimeout(check, 2000);
       });
     };
-
     check();
   });
+}
+
+// ---------- 注入前端补丁（解决 startAuthentication 警告） ----------
+function injectWebAuthnPatch() {
+  const patchScript = `
+    (async function() {
+      console.log('[Electron] Injecting WebAuthn compatibility patch...');
+      if (typeof window.startAuthentication === 'function') {
+        const originalStart = window.startAuthentication;
+        window.startAuthentication = function(options) {
+          console.log('[Electron] Intercepted startAuthentication with options:', options);
+          if (options && !options.options && (options.rpId || options.challenge)) {
+            const wrapped = { options: options };
+            return originalStart(wrapped);
+          }
+          return originalStart(options);
+        };
+        console.log('[Electron] startAuthentication patched successfully.');
+      } else {
+        console.log('[Electron] startAuthentication not found, skipping patch.');
+      }
+      console.log('[Electron] PublicKeyCredential available:', !!window.PublicKeyCredential);
+      if (window.PublicKeyCredential) {
+        try {
+          const result = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+          console.log('[Electron] isUserVerifyingPlatformAuthenticatorAvailable:', result);
+        } catch (e) {
+          console.log('[Electron] Error checking UVPA:', e);
+        }
+      }
+    })();
+  `;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.executeJavaScript(patchScript)
+      .catch(err => log('Patch injection error:', err.message));
+  }
 }
 
 // ---------- 创建窗口 ----------
@@ -111,7 +185,6 @@ async function createWindow() {
     mainWindow.focus();
     return mainWindow;
   }
-
   if (windowCreationPromise) {
     log('Window creation in progress, waiting...');
     await windowCreationPromise;
@@ -120,10 +193,8 @@ async function createWindow() {
       return mainWindow;
     }
   }
-
   windowCreationPromise = (async () => {
     log('Creating window...');
-
     try {
       const winConfig = {
         ...CONFIG.WINDOW_CONFIG,
@@ -132,45 +203,22 @@ async function createWindow() {
           webSecurity: false,
           allowRunningInsecureContent: true,
           enableWebAuthn: true,
-          plugins: true,
           experimentalFeatures: true,
-          enableBlinkFeatures: 'WebAuthn,WebUSB,WebHID,WebNFC', // 添加常见硬件特性
+          enableBlinkFeatures: 'WebAuthn',
+          sandbox: false,
+          plugins: true,
         }
       };
-
       mainWindow = new BrowserWindow(winConfig);
-      log('Window created (webSecurity: false)');
+      log('Window created (webSecurity: false, sandbox: false, host-resolver-rules dynamic, WebAuthn Windows API enabled)');
 
-      // ---------- 权限授予（兼容所有 Electron 版本） ----------
-      const session = mainWindow.webContents.session;
-
-      // 1. 通用权限请求
-      session.setPermissionRequestHandler((webContents, permission, callback) => {
+      // ---------- 权限授予 ----------
+      mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
         log('Permission requested: ' + permission + ' - granting');
         callback(true);
       });
+      mainWindow.webContents.session.setDevicePermissionHandler(() => true);
 
-      // 2. 设备权限（WebAuthn 专用）
-      if (typeof session.setDevicePermissionHandler === 'function') {
-        session.setDevicePermissionHandler((details) => {
-          log('Device permission requested: ' + details.deviceType);
-          return true;
-        });
-      } else {
-        log('setDevicePermissionHandler not available, using fallback');
-      }
-
-      // 3. 权限检查（可选，兼容性处理）
-      if (typeof session.setPermissionCheckHandler === 'function') {
-        session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
-          log('Permission check: ' + permission + ' from ' + requestingOrigin + ' - granting');
-          return true;
-        });
-      }
-
-      // 注意：已移除 setMediaAccessPermissionHandler（旧版 Electron 不支持）
-
-      // ---------- 唯一的事件注册 ----------
       let isShown = false;
       mainWindow.once('ready-to-show', () => {
         if (!mainWindow.isDestroyed()) {
@@ -180,36 +228,45 @@ async function createWindow() {
         }
       });
 
-      // ---------- 加载失败处理 ----------
+      // ---------- 加载失败重试 ----------
       mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
         const msg = `Failed to load URL: ${errorDescription} (${errorCode}) loading '${validatedURL}'`;
         log(msg);
+        if (errorCode === -102 && loadRetryCount < 3) {
+          loadRetryCount++;
+          log('Retrying load attempt ' + loadRetryCount + ' of 3...');
+          setTimeout(() => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.loadURL(TARGET_URL).catch(err => log('Retry load error: ' + err.message));
+            }
+          }, 2000);
+          return;
+        }
         if (loadFailed) return;
         loadFailed = true;
         mainWindow.webContents.removeAllListeners('did-fail-load');
-
         mainWindow.loadURL(`data:text/html;charset=utf-8,
-          <html>
-            <head><meta charset="utf-8"><title>加载失败</title></head>
-            <body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;margin:0;background:#f5f5f5;">
-              <div style="background:white;padding:40px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);max-width:600px;text-align:center;">
-                <h2>加载失败</h2>
-                <p style="color:#d32f2f;">${errorDescription}</p>
-                <p style="color:#666;font-size:14px;">URL: ${validatedURL}</p>
-                <p style="color:#999;font-size:13px;">${serverProcess ? '服务器已启动' : '服务器未启动'}</p>
-                <p style="color:#999;font-size:12px;">请检查: 1) 端口 ${new URL(validatedURL).port} 是否被占用 2) 防火墙是否放行</p>
-              </div>
-            </body>
-          </html>
+          <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;">
+            <div style="text-align:center;">
+              <h2>加载失败</h2>
+              <p style="color:#d32f2f;">${errorDescription}</p>
+              <p>URL: ${validatedURL}</p>
+            </div>
+          </body></html>
         `);
         if (!isShown) mainWindow.show();
+      });
+
+      mainWindow.webContents.on('did-finish-load', () => {
+        log('Page finished loading');
+        injectWebAuthnPatch();
       });
 
       log(`Loading: ${TARGET_URL}`);
       await mainWindow.loadURL(TARGET_URL);
       log('Load success');
+      loadRetryCount = 0;
 
-      // ---------- 后备显示（3秒后若未显示则强制显示） ----------
       setTimeout(() => {
         if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
           mainWindow.show();
@@ -229,18 +286,7 @@ async function createWindow() {
       log(msg);
       emergencyLog(msg);
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.loadURL(`data:text/html;charset=utf-8,
-          <html>
-            <head><meta charset="utf-8"><title>启动错误</title></head>
-            <body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;margin:0;background:#f5f5f5;">
-              <div style="background:white;padding:40px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);max-width:600px;text-align:center;">
-                <h2>启动错误</h2>
-                <p style="color:#d32f2f;">${err.message}</p>
-                <p style="color:#999;font-size:13px;">请查看桌面上的 myapp_debug.log 获取详细信息。</p>
-              </div>
-            </body>
-          </html>
-        `);
+        mainWindow.loadURL(`data:text/html;charset=utf-8,<html>...error page...</html>`);
         mainWindow.show();
         return mainWindow;
       } else {
@@ -251,49 +297,37 @@ async function createWindow() {
       windowCreationPromise = null;
     }
   })();
-
   return windowCreationPromise;
 }
 
 // ---------- 启动服务器 ----------
 async function startServer() {
   if (!CONFIG.AUTO_START_SERVER) return;
-
   const serverPath = path.join(__dirname, CONFIG.SERVER_PATH);
   log('Starting server: ' + serverPath);
   if (!fs.existsSync(serverPath)) {
     log('Server file not found: ' + serverPath);
     return;
   }
-
-  const env = {
-    ...process.env,
-    NODE_PATH: path.join(__dirname, 'node_modules'),
-  };
-
+  const env = { ...process.env, NODE_PATH: path.join(__dirname, 'node_modules') };
   serverProcess = spawn('node', [serverPath], {
     cwd: __dirname,
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
     env,
   });
-
-  serverProcess.stdout.on('data', (data) => {
-    log('Server stdout: ' + data.toString().trim());
-  });
-  serverProcess.stderr.on('data', (data) => {
-    log('Server stderr: ' + data.toString().trim());
-  });
-
+  serverProcess.stdout.on('data', (data) => log('Server stdout: ' + data.toString().trim()));
+  serverProcess.stderr.on('data', (data) => log('Server stderr: ' + data.toString().trim()));
   serverProcess.on('error', (err) => log('Server process error: ' + err.message));
   serverProcess.on('exit', (code) => {
     log('Server process exited with code ' + code);
-    if (!mainWindow && code !== null && code !== 0) {
-      log('Server exited before window created with error, quitting');
+    if (!mainWindow) {
+      log('Server exited before window created, quitting');
       app.quit();
     }
   });
-
-  const ready = await waitForServer(CONFIG.APP_URL, 30000);
+  serverProcess.unref();
+  const ready = await waitForServer(CONFIG.APP_URL, 60000);
   log(ready ? 'Server is ready' : 'Server not ready within timeout, window will try to load anyway');
 }
 
@@ -311,13 +345,6 @@ app.on('window-all-closed', () => {
     serverProcess = null;
   }
   app.quit();
-});
-
-app.on('before-quit', () => {
-  if (serverProcess) {
-    serverProcess.kill('SIGTERM');
-    serverProcess = null;
-  }
 });
 
 app.on('activate', () => {
