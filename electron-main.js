@@ -27,43 +27,36 @@ let windowCreationPromise = null;
 let loadRetryCount = 0;
 
 // ============================================================
-// 动态设置命令行开关（从 APP_URL 中提取主机名）
+// 命令行开关
 // ============================================================
 try {
   const urlObj = new URL(TARGET_URL);
   const hostname = urlObj.hostname;
 
-  // 基础开关
   app.commandLine.appendSwitch('no-sandbox');
   app.commandLine.appendSwitch('ignore-certificate-errors');
-  app.commandLine.appendSwitch('disable-web-security');
   app.commandLine.appendSwitch('allow-insecure-localhost');
-
-  // 动态映射域名到 127.0.0.1，使该域名成为安全源
   app.commandLine.appendSwitch('host-resolver-rules', `MAP ${hostname} 127.0.0.1`);
-
-  // 启用所有 WebAuthn 特性（包括 Windows 系统 API 和 HID）
   app.commandLine.appendSwitch('enable-features',
-    'WebAuthentication,WebAuthn,WebAuthenticationHidSupport,WebAuthenticationWindowsApi');
+    'WebAuthentication,WebAuthn,WebAuthenticationHidSupport,WebAuthenticationWindowsApi,WebAuthenticationAndroidAccessory');
   app.commandLine.appendSwitch('disable-features',
     'UseDnsHttpsSvcb,BlockInsecurePrivateNetworkRequests');
   app.commandLine.appendSwitch('enable-experimental-web-platform-features');
+  app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
   app.commandLine.appendSwitch('vmodule', 'webauthn*=3');
 
-  console.log(`[Electron] Mapped ${hostname} to 127.0.0.1 for WebAuthn security.`);
+  console.log(`[Electron] Mapped ${hostname} to 127.0.0.1`);
 } catch (err) {
-  console.error('[Electron] Failed to parse APP_URL, using fallback:', err);
-  // 如果解析失败，仍然启用基本开关
+  console.error('[Electron] Failed to parse APP_URL:', err);
   app.commandLine.appendSwitch('no-sandbox');
   app.commandLine.appendSwitch('ignore-certificate-errors');
-  app.commandLine.appendSwitch('disable-web-security');
   app.commandLine.appendSwitch('allow-insecure-localhost');
   app.commandLine.appendSwitch('enable-features',
     'WebAuthentication,WebAuthn,WebAuthenticationHidSupport,WebAuthenticationWindowsApi');
   app.commandLine.appendSwitch('disable-features',
     'UseDnsHttpsSvcb,BlockInsecurePrivateNetworkRequests');
   app.commandLine.appendSwitch('enable-experimental-web-platform-features');
-  app.commandLine.appendSwitch('vmodule', 'webauthn*=3');
+  app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 }
 
 // ---------- 日志 ----------
@@ -142,38 +135,47 @@ function waitForServer(url, timeout = 60000) {
   });
 }
 
-// ---------- 注入前端补丁（解决 startAuthentication 警告） ----------
-function injectWebAuthnPatch() {
-  const patchScript = `
-    (async function() {
-      console.log('[Electron] Injecting WebAuthn compatibility patch...');
-      if (typeof window.startAuthentication === 'function') {
-        const originalStart = window.startAuthentication;
-        window.startAuthentication = function(options) {
-          console.log('[Electron] Intercepted startAuthentication with options:', options);
-          if (options && !options.options && (options.rpId || options.challenge)) {
-            const wrapped = { options: options };
-            return originalStart(wrapped);
-          }
-          return originalStart(options);
-        };
-        console.log('[Electron] startAuthentication patched successfully.');
-      } else {
-        console.log('[Electron] startAuthentication not found, skipping patch.');
-      }
-      console.log('[Electron] PublicKeyCredential available:', !!window.PublicKeyCredential);
+// ---------- 注入调试和兼容脚本 ----------
+function injectPatch() {
+  const script = `
+    (function() {
+      console.log('[Electron] Checking platform authenticator availability...');
       if (window.PublicKeyCredential) {
-        try {
-          const result = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-          console.log('[Electron] isUserVerifyingPlatformAuthenticatorAvailable:', result);
-        } catch (e) {
-          console.log('[Electron] Error checking UVPA:', e);
-        }
+        PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(result => {
+          console.log('[Electron] Platform authenticator available:', result);
+          if (!result) {
+            console.warn('[Electron] Windows Hello may not be configured or Electron cannot detect it.');
+          }
+        }).catch(e => console.error('[Electron] Error checking UVPA:', e));
+      }
+
+      if (navigator.credentials && navigator.credentials.create) {
+        const originalCreate = navigator.credentials.create.bind(navigator.credentials);
+        navigator.credentials.create = function(options) {
+          if (options && options.publicKey) {
+            const pk = options.publicKey;
+            if (!pk.authenticatorSelection) {
+              pk.authenticatorSelection = {
+                authenticatorAttachment: 'platform',
+                userVerification: 'required',
+                residentKey: 'preferred'
+              };
+              console.log('[Electron] Added authenticatorSelection: platform');
+            } else {
+              if (!pk.authenticatorSelection.authenticatorAttachment) {
+                pk.authenticatorSelection.authenticatorAttachment = 'platform';
+                console.log('[Electron] Set authenticatorAttachment to platform');
+              }
+            }
+          }
+          return originalCreate(options);
+        };
+        console.log('[Electron] credentials.create intercepted.');
       }
     })();
   `;
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.executeJavaScript(patchScript)
+    mainWindow.webContents.executeJavaScript(script)
       .catch(err => log('Patch injection error:', err.message));
   }
 }
@@ -200,19 +202,19 @@ async function createWindow() {
         ...CONFIG.WINDOW_CONFIG,
         webPreferences: {
           ...CONFIG.WINDOW_CONFIG.webPreferences,
-          webSecurity: false,
+          webSecurity: true,
           allowRunningInsecureContent: true,
           enableWebAuthn: true,
           experimentalFeatures: true,
           enableBlinkFeatures: 'WebAuthn',
           sandbox: false,
           plugins: true,
+          contextIsolation: false,
         }
       };
       mainWindow = new BrowserWindow(winConfig);
-      log('Window created (webSecurity: false, sandbox: false, host-resolver-rules dynamic, WebAuthn Windows API enabled)');
+      log('Window created (webSecurity: true, sandbox: false)');
 
-      // ---------- 权限授予 ----------
       mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
         log('Permission requested: ' + permission + ' - granting');
         callback(true);
@@ -228,7 +230,6 @@ async function createWindow() {
         }
       });
 
-      // ---------- 加载失败重试 ----------
       mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
         const msg = `Failed to load URL: ${errorDescription} (${errorCode}) loading '${validatedURL}'`;
         log(msg);
@@ -259,7 +260,7 @@ async function createWindow() {
 
       mainWindow.webContents.on('did-finish-load', () => {
         log('Page finished loading');
-        injectWebAuthnPatch();
+        injectPatch();
       });
 
       log(`Loading: ${TARGET_URL}`);
@@ -309,6 +310,7 @@ async function startServer() {
     log('Server file not found: ' + serverPath);
     return;
   }
+  // NODE_PATH 指向 __dirname/node_modules，即 app 目录下的 node_modules
   const env = { ...process.env, NODE_PATH: path.join(__dirname, 'node_modules') };
   serverProcess = spawn('node', [serverPath], {
     cwd: __dirname,
