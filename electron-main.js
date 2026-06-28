@@ -1,202 +1,156 @@
-import { app, BrowserWindow } from 'electron';
-import { spawn } from 'child_process';
+import { app, BrowserWindow, Menu } from 'electron';
+import { spawn, exec } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import https from 'https';
 import http from 'http';
+import https from 'https';
+import net from 'net';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// ============================================================
-// 配置（由 build.js 注入）
-// ============================================================
+// 配置注入
 const CONFIG = {
   APP_URL: JSON.parse('__APP_URL__'),
   WINDOW_CONFIG: JSON.parse('__WINDOW_CONFIG__'),
   SERVER_PATH: JSON.parse('__SERVER_PATH__'),
   AUTO_START_SERVER: JSON.parse('__AUTO_START_SERVER__'),
   AUTO_KILL_SERVER: JSON.parse('__AUTO_KILL_SERVER__'),
+  MENU_TEMPLATE: __MENU_TEMPLATE__,
 };
-
 const TARGET_URL = CONFIG.APP_URL;
-let mainWindow = null;
-let serverProcess = null;
-let loadFailed = false;
-let windowCreationPromise = null;
-let loadRetryCount = 0;
 
-// ============================================================
+let mainWindow = null, serverProcess = null, windowCreationPromise = null, loadRetryCount = 0;
 // 命令行开关
-// ============================================================
 try {
-  const urlObj = new URL(TARGET_URL);
-  const hostname = urlObj.hostname;
-
+  const hostname = new URL(TARGET_URL).hostname;
   app.commandLine.appendSwitch('no-sandbox');
   app.commandLine.appendSwitch('ignore-certificate-errors');
   app.commandLine.appendSwitch('allow-insecure-localhost');
   app.commandLine.appendSwitch('host-resolver-rules', `MAP ${hostname} 127.0.0.1`);
-  app.commandLine.appendSwitch('enable-features',
-    'WebAuthentication,WebAuthn,WebAuthenticationHidSupport,WebAuthenticationWindowsApi,WebAuthenticationAndroidAccessory');
-  app.commandLine.appendSwitch('disable-features',
-    'UseDnsHttpsSvcb,BlockInsecurePrivateNetworkRequests');
+  app.commandLine.appendSwitch('enable-features', 'WebAuthentication,WebAuthn,WebAuthenticationHidSupport,WebAuthenticationWindowsApi,WebAuthenticationAndroidAccessory');
+  app.commandLine.appendSwitch('disable-features', 'UseDnsHttpsSvcb,BlockInsecurePrivateNetworkRequests');
   app.commandLine.appendSwitch('enable-experimental-web-platform-features');
   app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
   app.commandLine.appendSwitch('vmodule', 'webauthn*=3');
-
-  console.log(`[Electron] Mapped ${hostname} to 127.0.0.1`);
-} catch (err) {
-  console.error('[Electron] Failed to parse APP_URL:', err);
+  console.log(`[Electron] 已映射 ${hostname} 到 127.0.0.1`);
+} catch (_) {
   app.commandLine.appendSwitch('no-sandbox');
   app.commandLine.appendSwitch('ignore-certificate-errors');
   app.commandLine.appendSwitch('allow-insecure-localhost');
-  app.commandLine.appendSwitch('enable-features',
-    'WebAuthentication,WebAuthn,WebAuthenticationHidSupport,WebAuthenticationWindowsApi');
-  app.commandLine.appendSwitch('disable-features',
-    'UseDnsHttpsSvcb,BlockInsecurePrivateNetworkRequests');
-  app.commandLine.appendSwitch('enable-experimental-web-platform-features');
-  app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 }
 
-// ---------- 日志 ----------
-function log(message, ...args) {
+// 日志
+function log(msg) {
   try {
-    const desktop = app.getPath('desktop');
-    const logPath = path.join(desktop, 'myapp_debug.log');
-    const timestamp = new Date().toISOString();
-    const msg = args.length ? `${timestamp} ${message} ${args.join(' ')}` : `${timestamp} ${message}`;
-    fs.appendFileSync(logPath, msg + '\n');
+    const logPath = path.join(app.getPath('desktop'), 'myapp_debug.log');
+    fs.appendFileSync(logPath, new Date().toISOString() + ' ' + msg + '\n');
   } catch (_) { }
 }
-function emergencyLog(message) {
-  try {
-    const logPath = path.join(process.cwd(), 'myapp_emergency.log');
-    fs.appendFileSync(logPath, new Date().toISOString() + ' ' + message + '\n');
-  } catch (_) { }
+function emergencyLog(msg) {
+  try { fs.appendFileSync(path.join(process.cwd(), 'myapp_emergency.log'), new Date().toISOString() + ' ' + msg + '\n'); } catch (_) { }
 }
 
-// ---------- 单实例 ----------
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
-  log('Another instance is running, exiting');
-  app.quit();
-} else {
+// 单实例
+if (!app.requestSingleInstanceLock()) { log('已有另一个实例在运行,退出'); app.quit(); }
+else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); }
+  });
+}
+app.on('certificate-error', (e, wc, url, err, cert, cb) => { e.preventDefault(); cb(true); });
+
+// 端口清理
+function ensurePortFree(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        const cmd = process.platform === 'win32' ? `netstat -ano | findstr :${port}` : `lsof -i :${port} -t`;
+        exec(cmd, (err, stdout) => {
+          if (err) { resolve(false); return; }
+          const pids = stdout.split(/\s+/).filter(x => x && !isNaN(x));
+          let killed = false;
+          for (const pid of pids) {
+            try { process.kill(parseInt(pid), 'SIGTERM'); killed = true; } catch (_) { }
+          }
+          setTimeout(() => resolve(killed), 1000);
+        });
+      } else { resolve(false); }
+    });
+    server.once('listening', () => { server.close(); resolve(true); });
+    server.listen(port, '127.0.0.1');
   });
 }
 
-// ---------- 证书信任 ----------
-app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-  event.preventDefault();
-  callback(true);
-});
-
-// ---------- 服务器就绪探测 ----------
-function waitForServer(url, timeout = 60000) {
+// 服务器就绪探测
+function waitForServer(port, timeout = 30000) {
   return new Promise((resolve) => {
-    const startTime = Date.now();
-    let timer = null;
+    const start = Date.now();
+    const protocol = new URL(CONFIG.APP_URL).protocol;
+    const httpModule = protocol === 'https:' ? https : http;
     const check = () => {
-      if (Date.now() - startTime > timeout) {
-        log('Server ready check timed out after ' + timeout + 'ms, proceeding anyway');
+      if (Date.now() - start > timeout) {
+        log('服务器就绪超时');
         resolve(false);
         return;
       }
-      const parsed = new URL(url);
-      const protocol = parsed.protocol === 'https:' ? https : http;
-      const request = protocol.get({
-        hostname: parsed.hostname,
-        port: parsed.port,
-        path: parsed.pathname || '/',
-        rejectUnauthorized: false,
+      const req = httpModule.get({
+        hostname: '127.0.0.1',
+        port,
+        path: '/',
+        rejectUnauthorized: false,   // 忽略证书错误,适用于自签证书
         timeout: 5000,
         family: 4,
-      }, (res) => {
-        log('Server responded with status: ' + res.statusCode);
+      }, res => {
+        log('服务器响应 ' + res.statusCode);
         resolve(true);
-        request.destroy();
+        req.destroy();
       });
-      request.on('error', (err) => {
-        log('Server not ready yet: ' + err.message);
-        timer = setTimeout(check, 2000);
+      req.on('error', (err) => {
+        log('服务器尚未就绪: ' + err.message);
+        setTimeout(check, 2000);
       });
-      request.on('timeout', () => {
-        log('Server request timeout');
-        request.destroy();
-        timer = setTimeout(check, 2000);
+      req.on('timeout', () => {
+        req.destroy();
+        setTimeout(check, 2000);
       });
     };
     check();
   });
 }
 
-// ---------- 注入调试和兼容脚本 ----------
+// 注入补丁
 function injectPatch() {
   const script = `
     (function() {
-      console.log('[Electron] Checking platform authenticator availability...');
       if (window.PublicKeyCredential) {
         PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(result => {
-          console.log('[Electron] Platform authenticator available:', result);
-          if (!result) {
-            console.warn('[Electron] Windows Hello may not be configured or Electron cannot detect it.');
-          }
-        }).catch(e => console.error('[Electron] Error checking UVPA:', e));
+          console.log('[Electron] 平台验证器可用:', result);
+        }).catch(e => console.error('[Electron] UVPA 错误:', e));
       }
-
       if (navigator.credentials && navigator.credentials.create) {
-        const originalCreate = navigator.credentials.create.bind(navigator.credentials);
+        const orig = navigator.credentials.create.bind(navigator.credentials);
         navigator.credentials.create = function(options) {
-          if (options && options.publicKey) {
+          if (options?.publicKey) {
             const pk = options.publicKey;
-            if (!pk.authenticatorSelection) {
-              pk.authenticatorSelection = {
-                authenticatorAttachment: 'platform',
-                userVerification: 'required',
-                residentKey: 'preferred'
-              };
-              console.log('[Electron] Added authenticatorSelection: platform');
-            } else {
-              if (!pk.authenticatorSelection.authenticatorAttachment) {
-                pk.authenticatorSelection.authenticatorAttachment = 'platform';
-                console.log('[Electron] Set authenticatorAttachment to platform');
-              }
-            }
+            if (!pk.authenticatorSelection) pk.authenticatorSelection = { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' };
+            else if (!pk.authenticatorSelection.authenticatorAttachment) pk.authenticatorSelection.authenticatorAttachment = 'platform';
           }
-          return originalCreate(options);
+          return orig(options);
         };
-        console.log('[Electron] credentials.create intercepted.');
+        console.log('[Electron] credentials.create 已拦截;');
       }
     })();
   `;
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.executeJavaScript(script)
-      .catch(err => log('Patch injection error:', err.message));
-  }
+  if (mainWindow && !mainWindow.isDestroyed())
+    mainWindow.webContents.executeJavaScript(script).catch(err => log('注入补丁错误: ' + err.message));
 }
 
-// ---------- 创建窗口 ----------
+// 创建窗口
 async function createWindow() {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    log('Window already exists, focusing');
-    mainWindow.focus();
-    return mainWindow;
-  }
-  if (windowCreationPromise) {
-    log('Window creation in progress, waiting...');
-    await windowCreationPromise;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.focus();
-      return mainWindow;
-    }
-  }
+  if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.focus(); return mainWindow; }
+  if (windowCreationPromise) { await windowCreationPromise; if (mainWindow) { mainWindow.focus(); return mainWindow; } }
   windowCreationPromise = (async () => {
-    log('Creating window...');
     try {
       const winConfig = {
         ...CONFIG.WINDOW_CONFIG,
@@ -205,159 +159,138 @@ async function createWindow() {
           webSecurity: true,
           allowRunningInsecureContent: true,
           enableWebAuthn: true,
-          experimentalFeatures: true,
-          enableBlinkFeatures: 'WebAuthn',
           sandbox: false,
           plugins: true,
           contextIsolation: false,
         }
       };
       mainWindow = new BrowserWindow(winConfig);
-      log('Window created (webSecurity: true, sandbox: false)');
-
-      mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-        log('Permission requested: ' + permission + ' - granting');
-        callback(true);
-      });
+      mainWindow.webContents.session.setPermissionRequestHandler((wc, perm, cb) => { cb(true); });
       mainWindow.webContents.session.setDevicePermissionHandler(() => true);
 
-      let isShown = false;
-      mainWindow.once('ready-to-show', () => {
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.show();
-          isShown = true;
-          log('Window shown (ready-to-show)');
-        }
-      });
+      let shown = false;
+      mainWindow.once('ready-to-show', () => { if (!mainWindow.isDestroyed()) { mainWindow.show(); shown = true; } });
 
-      mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-        const msg = `Failed to load URL: ${errorDescription} (${errorCode}) loading '${validatedURL}'`;
-        log(msg);
-        if (errorCode === -102 && loadRetryCount < 3) {
+      mainWindow.webContents.on('did-fail-load', (e, code, desc, url) => {
+        if (code === -102 && loadRetryCount < 3) {
           loadRetryCount++;
-          log('Retrying load attempt ' + loadRetryCount + ' of 3...');
-          setTimeout(() => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.loadURL(TARGET_URL).catch(err => log('Retry load error: ' + err.message));
-            }
-          }, 2000);
+          setTimeout(() => { if (mainWindow) mainWindow.loadURL(TARGET_URL).catch(() => { }); }, 2000);
           return;
         }
-        if (loadFailed) return;
-        loadFailed = true;
-        mainWindow.webContents.removeAllListeners('did-fail-load');
-        mainWindow.loadURL(`data:text/html;charset=utf-8,
-          <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;">
-            <div style="text-align:center;">
-              <h2>加载失败</h2>
-              <p style="color:#d32f2f;">${errorDescription}</p>
-              <p>URL: ${validatedURL}</p>
-            </div>
-          </body></html>
-        `);
-        if (!isShown) mainWindow.show();
+        if (!shown) mainWindow.show();
+        mainWindow.loadURL(`data:text/html;charset=utf-8,<h2>加载失败</h2><p>${desc}</p><p>URL: ${url}</p>`);
       });
+      mainWindow.webContents.on('did-finish-load', () => { injectPatch(); });
 
-      mainWindow.webContents.on('did-finish-load', () => {
-        log('Page finished loading');
-        injectPatch();
-      });
-
-      log(`Loading: ${TARGET_URL}`);
       await mainWindow.loadURL(TARGET_URL);
-      log('Load success');
       loadRetryCount = 0;
-
-      setTimeout(() => {
-        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
-          mainWindow.show();
-          log('Window shown (forced timeout)');
-        }
-      }, 3000);
-
-      mainWindow.on('closed', () => {
-        mainWindow = null;
-        log('Window closed');
-      });
-
-      log('Window creation completed');
+      setTimeout(() => { if (mainWindow && !mainWindow.isVisible()) mainWindow.show(); }, 3000);
+      mainWindow.on('closed', () => { mainWindow = null; });
       return mainWindow;
     } catch (err) {
-      const msg = 'Failed to create window: ' + err.message;
-      log(msg);
-      emergencyLog(msg);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.loadURL(`data:text/html;charset=utf-8,<html>...error page...</html>`);
-        mainWindow.show();
-        return mainWindow;
-      } else {
-        app.quit();
-        throw err;
-      }
-    } finally {
-      windowCreationPromise = null;
-    }
+      log('创建窗口失败: ' + err.message);
+      emergencyLog('窗口创建失败: ' + err.message);
+      app.quit();
+    } finally { windowCreationPromise = null; }
   })();
   return windowCreationPromise;
 }
 
-// ---------- 启动服务器 ----------
+// 启动服务器
 async function startServer() {
   if (!CONFIG.AUTO_START_SERVER) return;
   const serverPath = path.join(__dirname, CONFIG.SERVER_PATH);
-  log('Starting server: ' + serverPath);
-  if (!fs.existsSync(serverPath)) {
-    log('Server file not found: ' + serverPath);
-    return;
+  if (!fs.existsSync(serverPath)) { log('服务器文件不存在: ' + serverPath); return; }
+
+  let port = 7296;
+  try { port = parseInt(new URL(CONFIG.APP_URL).port) || 7296; } catch (_) { }
+
+  await ensurePortFree(port);
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const env = { ...process.env, NODE_PATH: path.join(__dirname, 'node_modules') };
+    serverProcess = spawn('node', [serverPath], { cwd: __dirname, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env });
+    serverProcess.stdout.on('data', d => log('服务器 stdout: ' + d.toString().trim()));
+    serverProcess.stderr.on('data', d => log('服务器 stderr: ' + d.toString().trim()));
+    serverProcess.on('error', err => log('服务器进程错误: ' + err.message));
+    serverProcess.unref();
+
+    const ready = await waitForServer(port, 30000);
+    if (ready) { log('服务器已就绪'); return; }
+
+    log(`服务器未就绪 (尝试 ${attempt}/3),重试...`);
+    try {
+      if (process.platform === 'win32')
+        exec(`taskkill /pid ${serverProcess.pid} /T /F`);
+      else
+        process.kill(-serverProcess.pid, 'SIGTERM');
+    } catch (_) { }
+    serverProcess = null;
+    await new Promise(r => setTimeout(r, 2000));
+    await ensurePortFree(port);
   }
-  // NODE_PATH 指向 __dirname/node_modules，即 app 目录下的 node_modules
-  const env = { ...process.env, NODE_PATH: path.join(__dirname, 'node_modules') };
-  serverProcess = spawn('node', [serverPath], {
-    cwd: __dirname,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: true,
-    env,
-  });
-  serverProcess.stdout.on('data', (data) => log('Server stdout: ' + data.toString().trim()));
-  serverProcess.stderr.on('data', (data) => log('Server stderr: ' + data.toString().trim()));
-  serverProcess.on('error', (err) => log('Server process error: ' + err.message));
-  serverProcess.on('exit', (code) => {
-    log('Server process exited with code ' + code);
-    if (!mainWindow) {
-      log('Server exited before window created, quitting');
-      app.quit();
-    }
-  });
-  serverProcess.unref();
-  const ready = await waitForServer(CONFIG.APP_URL, 60000);
-  log(ready ? 'Server is ready' : 'Server not ready within timeout, window will try to load anyway');
+  log('服务器启动失败,继续加载窗口（可能无法访问）');
 }
 
-// ---------- 生命周期 ----------
+// 菜单
+function setupMenu() {
+  const template = CONFIG.MENU_TEMPLATE;
+  if (!template || template.length === 0) return;
+  const proc = template.map(item => {
+    if (item.submenu) {
+      item.submenu = item.submenu.map(sub => {
+        if (sub.click && typeof sub.click === 'string') {
+          try { sub.click = eval(sub.click); } catch (_) { }
+        }
+        return sub;
+      });
+    }
+    return item;
+  });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(proc));
+}
+
+// 生命周期
 app.whenReady().then(async () => {
-  log('App ready');
+  log('应用已就绪');
+  setupMenu();
   await startServer();
   await createWindow();
 });
 
 app.on('window-all-closed', () => {
-  log('All windows closed');
+  log('所有窗口已关闭');
   if (CONFIG.AUTO_KILL_SERVER && serverProcess) {
-    serverProcess.kill('SIGTERM');
+    try {
+      if (process.platform === 'win32')
+        exec(`taskkill /pid ${serverProcess.pid} /T /F`);
+      else
+        process.kill(-serverProcess.pid, 'SIGTERM');
+    } catch (_) { }
     serverProcess = null;
   }
   app.quit();
 });
 
 app.on('activate', () => {
-  log('Activate event');
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus();
+  else if (mainWindow) mainWindow.focus();
 });
 
 process.on('uncaughtException', (err) => {
-  const msg = 'Uncaught Exception: ' + err.message + '\n' + err.stack;
+  const msg = '未捕获异常: ' + err.message + '\n' + err.stack;
   log(msg);
   emergencyLog(msg);
   app.quit();
+});
+
+app.on('will-quit', () => {
+  if (serverProcess) {
+    try {
+      if (process.platform === 'win32')
+        exec(`taskkill /pid ${serverProcess.pid} /T /F`);
+      else
+        process.kill(-serverProcess.pid, 'SIGTERM');
+    } catch (_) { }
+  }
 });

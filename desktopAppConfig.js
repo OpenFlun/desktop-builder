@@ -31,8 +31,66 @@ export default {
 
 	// ===== 图标 =====
 	branding: {
-		icon: './icon.png',                 // 图标路径，建议 512x512 PNG
+		icon: null,             		   // 应用图标路径，建议 512x512 PNG
+		installerIcon: null,    		   // 安装程序图标（必须 .ico）
+		uninstallerIcon: null   		   // 卸载程序图标（必须 .ico）
 	},
+
+	// ===== 菜单配置（可自由修改语言和结构） =====
+	menu: [
+		{
+			label: '文件',
+			submenu: [
+				{ role: 'close', label: '关闭' },
+				{ type: 'separator' },
+				{ role: 'quit', label: '退出' }
+			]
+		},
+		{
+			label: '编辑',
+			submenu: [
+				{ role: 'undo', label: '撤销' },
+				{ role: 'redo', label: '重做' },
+				{ type: 'separator' },
+				{ role: 'cut', label: '剪切' },
+				{ role: 'copy', label: '复制' },
+				{ role: 'paste', label: '粘贴' },
+				{ role: 'selectAll', label: '全选' }
+			]
+		},
+		{
+			label: '查看',
+			submenu: [
+				{ role: 'reload', label: '重新加载' },
+				{ role: 'forceReload', label: '强制重新加载' },
+				{ role: 'toggleDevTools', label: '开发者工具' },
+				{ type: 'separator' },
+				{ role: 'resetZoom', label: '重置缩放' },
+				{ role: 'zoomIn', label: '放大' },
+				{ role: 'zoomOut', label: '缩小' },
+				{ type: 'separator' },
+				{ role: 'togglefullscreen', label: '全屏' }
+			]
+		},
+		{
+			label: '窗口',
+			submenu: [
+				{ role: 'minimize', label: '最小化' },
+				{ role: 'zoom', label: '缩放' },
+				{ type: 'separator' },
+				{ role: 'close', label: '关闭' }
+			]
+		},
+		{
+			label: '帮助',
+			submenu: [
+				{
+					label: '关于',
+					click: `() => { require('electron').shell.openExternal('https://electronjs.org'); }`
+				}
+			]
+		}
+	],
 
 	// ===== 打包配置 =====
 	build: {
@@ -52,7 +110,7 @@ export default {
 
 		// macOS DMG 选项
 		dmg: {
-			iconSize: 128,                // 图标大小
+			iconSize: 256,                		 // 图标大小
 			window: { width: 540, height: 380 }, // DMG 窗口尺寸
 		},
 
