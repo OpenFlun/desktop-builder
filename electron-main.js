@@ -41,18 +41,18 @@ try {
 } catch (_) { }
 
 // 日志
-function log(msg) {
+const log = msg => {
   try {
     const logPath = path.join(app.getPath('desktop'), 'myapp_debug.log');
     fs.appendFileSync(logPath, new Date().toISOString() + ' ' + msg + '\n');
   } catch (_) { }
 }
-function emergencyLog(msg) {
+const emergencyLog = msg => {
   try { fs.appendFileSync(path.join(process.cwd(), 'myapp_emergency.log'), new Date().toISOString() + ' ' + msg + '\n'); } catch (_) { }
 }
 
 // 终止服务器进程
-function killServerProcess() {
+const killServerProcess = () => {
   if (!serverProcess) return;
   try {
     if (process.platform === 'win32') {
@@ -65,7 +65,7 @@ function killServerProcess() {
 }
 
 // 统一聚焦主窗口
-function focusMainWindow() {
+const focusMainWindow = () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
@@ -78,7 +78,7 @@ function focusMainWindow() {
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // 运行时依赖处理（利用 deps.json）
-async function ensureDependencies() {
+const ensureDependencies = async () => {
   const nodeModulesPath = path.join(__dirname, 'node_modules');
   try {
     await fs.promises.access(nodeModulesPath, fs.constants.F_OK);
@@ -161,13 +161,11 @@ async function ensureDependencies() {
 
 // 单实例
 if (!app.requestSingleInstanceLock()) { log('已有另一个实例在运行,退出'); app.quit(); }
-else {
-  app.on('second-instance', () => focusMainWindow());
-}
+else app.on('second-instance', () => focusMainWindow());
 app.on('certificate-error', (e, wc, url, err, cert, cb) => { e.preventDefault(); cb(true); });
 
 // 端口清理
-function ensurePortFree(port) {
+const ensurePortFree = port => {
   return new Promise((resolve) => {
     const server = net.createServer();
     server.once('error', (err) => {
@@ -190,7 +188,7 @@ function ensurePortFree(port) {
 }
 
 // 服务器就绪探测
-function waitForServer(port, timeout = 30000) {
+const waitForServer = (port, timeout = 30000) => {
   return new Promise((resolve) => {
     const start = Date.now();
     const protocol = new URL(CONFIG.APP_URL).protocol;
@@ -227,7 +225,7 @@ function waitForServer(port, timeout = 30000) {
 }
 
 // 注入补丁
-function injectPatch() {
+const injectPatch = () => {
   const script = `
     (function() {
       if (window.PublicKeyCredential) {
@@ -254,7 +252,7 @@ function injectPatch() {
 }
 
 // 创建窗口
-async function createWindow() {
+const createWindow = async () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     focusMainWindow();
     return mainWindow;
@@ -313,7 +311,7 @@ async function createWindow() {
 }
 
 // 启动服务器
-async function startServer() {
+const startServer = async () => {
   if (!CONFIG.AUTO_START_SERVER) return;
   const serverPath = path.join(__dirname, CONFIG.SERVER_PATH);
   if (!fs.existsSync(serverPath)) { log('服务器文件不存在: ' + serverPath); return; }
@@ -341,7 +339,7 @@ async function startServer() {
 }
 
 // 菜单
-function setupMenu() {
+const setupMenu = () => {
   const template = CONFIG.MENU_TEMPLATE;
   if (!template || template.length === 0) return;
   const proc = template.map(item => {
