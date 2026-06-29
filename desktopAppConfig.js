@@ -3,12 +3,12 @@
  * 所有路径相对于项目根目录
  */
 export default {
-	// ===== 必填 =====
+	// 必填字段:serverPath,appUrl,appName;
 	serverPath: './server.js',           // 网站启动脚本路径
 	appUrl: 'http://www.abc.com:7296',   // 网站访问地址
 	appName: '我的桌面应用',              // 应用显示名称
 
-	// ===== 窗口配置 =====
+	// 窗口配置
 	window: {
 		width: 1200,                      // 默认宽度(px)
 		height: 800,                      // 默认高度(px)
@@ -29,14 +29,14 @@ export default {
 		},
 	},
 
-	// ===== 图标 =====
+	// 图标
 	branding: {
-		icon: null,             		   // 应用图标路径，建议 512x512 PNG
+		appIcon: null,             		   // 应用图标路径，建议 512x512 PNG
 		installerIcon: null,    		   // 安装程序图标（必须 .ico）
 		uninstallerIcon: null   		   // 卸载程序图标（必须 .ico）
 	},
 
-	// ===== 菜单配置（可自由修改语言和结构） =====
+	// 菜单配置（可自由修改语言和结构）
 	menu: [
 		{
 			label: '文件',
@@ -92,7 +92,7 @@ export default {
 		}
 	],
 
-	// ===== 打包配置 =====
+	// 打包配置
 	build: {
 		appId: 'com.mycompany.myapp',    	// 应用唯一标识（反向域名格式）
 		outputDir: './dist',             	// 安装包输出目录
@@ -120,9 +120,47 @@ export default {
 		},
 	},
 
-	// ===== 高级选项 =====
+	// 高级选项
 	advanced: {
 		autoStartServer: true,           // 是否自动启动后端服务
 		autoKillServer: true             // 退出时是否自动关闭后端
 	},
+
+	// 排除文件/目录（相对于项目根目录,支持 glob 模式）
+	excludeFiles: [
+		'.vscode/',
+		'.idea/',
+		'.git/',
+		'.hintrc',
+		'.greenlockrc',
+		'node_modules/',
+		'dist/',
+		'docs/',
+		'temp/',
+		'tests/',
+		'./yarn.lock',
+		'./desktop.ini',
+		'./desktopAppConfig.js',
+		'./sevWin.js',
+		'./unSevWin.js',
+		'*.tgz',
+		'*.log'
+	],
+
+	// 排除依赖包（从最终依赖列表中移除,不会安装）
+	excludeDependencies: [
+		'@flun/desktop-builder',
+		'@flun/windows',
+		'image-size'
+	],
+
+	/**
+	 * 排除输出文件（在最终输出目录中排除某些安装包文件）
+	 * 例如 *.blockmap、latest.yml 等;
+	 * 注意：此配置仅在复制最终安装包到输出目录时生效,不影响构建过程;
+	 */
+	excludeOutputs: [
+		'*.blockmap',
+		'latest.yml'
+	]
 };
