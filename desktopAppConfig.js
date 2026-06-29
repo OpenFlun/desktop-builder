@@ -150,8 +150,7 @@ export default {
 	// 排除依赖包（从最终依赖列表中移除,不会安装）
 	excludeDependencies: [
 		'@flun/desktop-builder',
-		'@flun/windows',
-		'image-size'
+		'@flun/windows'
 	],
 
 	/**
