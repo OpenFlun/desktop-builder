@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, ipcMain } from 'electron';
 import { spawn, exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
@@ -7,9 +7,75 @@ import fs from 'fs';
 import http from 'http';
 import https from 'https';
 import net from 'net';
+import { createRequire } from 'module';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const execPromise = promisify(exec);
+
+// ========== Windows Hello 支持 ==========
+let Passport = null;
+if (process.platform === 'win32') {
+  try {
+    Passport = require('passport-desktop');
+  } catch (_) {
+    console.warn('[Windows Hello] passport-desktop 未安装');
+  }
+}
+
+ipcMain.handle('webauthn:isAvailable', async () => {
+  if (!Passport) return false;
+  try {
+    return Passport.available ? Passport.available() : false;
+  } catch { return false; }
+});
+
+ipcMain.handle('webauthn:create', async (event, publicKey) => {
+  if (!Passport) throw new Error('Windows Hello not supported');
+  try {
+    const accountId = publicKey?.user?.name || 'default';
+    const passport = new Passport(accountId);
+    if (!passport.accountExists) {
+      await passport.createAccount();
+    }
+    // 模拟 credential
+    return {
+      id: Buffer.from(accountId).toString('base64'),
+      rawId: Buffer.from(accountId),
+      response: {
+        clientDataJSON: Buffer.from(JSON.stringify({ type: 'webauthn.create' })),
+        attestationObject: Buffer.from(''),
+      },
+      type: 'public-key',
+    };
+  } catch (error) {
+    throw new Error(`Windows Hello 注册失败: ${error.message}`);
+  }
+});
+
+ipcMain.handle('webauthn:get', async (event, publicKey) => {
+  if (!Passport) throw new Error('Windows Hello not supported');
+  try {
+    const accountId = publicKey?.rpId || 'default';
+    const passport = new Passport(accountId);
+    const challenge = publicKey.challenge || Buffer.from('test');
+    const signature = await passport.sign(challenge);
+    return {
+      id: Buffer.from(accountId).toString('base64'),
+      rawId: Buffer.from(accountId),
+      response: {
+        authenticatorData: Buffer.from(''),
+        clientDataJSON: Buffer.from(JSON.stringify({ type: 'webauthn.get' })),
+        signature: signature,
+        userHandle: Buffer.from(''),
+      },
+      type: 'public-key',
+    };
+  } catch (error) {
+    throw new Error(`Windows Hello 登录失败: ${error.message}`);
+  }
+});
+// ========== Windows Hello 支持结束 ==========
 
 // 配置注入
 const CONFIG = {
@@ -23,7 +89,6 @@ const CONFIG = {
 const TARGET_URL = CONFIG.APP_URL;
 
 let mainWindow = null, serverProcess = null, windowCreationPromise = null, loadRetryCount = 0;
-// 基础命令行开关
 app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('ignore-certificate-errors');
 app.commandLine.appendSwitch('allow-insecure-localhost');
@@ -40,18 +105,16 @@ try {
   console.log(`[Electron] 已映射 ${hostname} 到 127.0.0.1`);
 } catch (_) { }
 
-// 日志
 const log = msg => {
   try {
     const logPath = path.join(app.getPath('desktop'), 'myapp_debug.log');
     fs.appendFileSync(logPath, new Date().toISOString() + ' ' + msg + '\n');
   } catch (_) { }
-}
+};
 const emergencyLog = msg => {
   try { fs.appendFileSync(path.join(process.cwd(), 'myapp_emergency.log'), new Date().toISOString() + ' ' + msg + '\n'); } catch (_) { }
-}
+};
 
-// 终止服务器进程
 const killServerProcess = () => {
   if (!serverProcess) return;
   try {
@@ -62,9 +125,8 @@ const killServerProcess = () => {
     }
   } catch (_) { }
   serverProcess = null;
-}
+};
 
-// 统一聚焦主窗口
 const focusMainWindow = () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -72,12 +134,10 @@ const focusMainWindow = () => {
     return true;
   }
   return false;
-}
+};
 
-// sleep 辅助
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// 运行时依赖处理（利用 deps.json）
 const ensureDependencies = async () => {
   const nodeModulesPath = path.join(__dirname, 'node_modules');
   try {
@@ -92,7 +152,6 @@ const ensureDependencies = async () => {
       log('错误: deps.json 不存在，无法安装依赖');
       return false;
     }
-
     let deps;
     try {
       const depsContent = await fs.promises.readFile(depsPath, 'utf-8');
@@ -101,8 +160,6 @@ const ensureDependencies = async () => {
       log('读取 deps.json 失败: ' + err.message);
       return false;
     }
-
-    // 读取现有 package.json，保留所有字段，只修改 dependencies
     const pkgPath = path.join(__dirname, 'package.json');
     let pkg;
     try {
@@ -112,7 +169,6 @@ const ensureDependencies = async () => {
       log('读取 package.json 失败: ' + err.message);
       return false;
     }
-
     pkg.dependencies = deps;
     pkg.devDependencies = {};
     try {
@@ -121,8 +177,6 @@ const ensureDependencies = async () => {
       log('写入 package.json 失败: ' + err.message);
       return false;
     }
-
-    // 执行安装
     try {
       let cmd = 'npm install';
       const lockPath = path.join(__dirname, 'package-lock.json');
@@ -133,7 +187,6 @@ const ensureDependencies = async () => {
       } catch {
         log('未找到 package-lock.json，使用 npm install');
       }
-
       const { stdout, stderr } = await execPromise(cmd, {
         cwd: __dirname,
         env: process.env,
@@ -142,8 +195,6 @@ const ensureDependencies = async () => {
       if (stdout) log('npm stdout: ' + stdout);
       if (stderr) log('npm stderr: ' + stderr);
       log('依赖安装完成');
-
-      // 验证 node_modules
       try {
         await fs.promises.access(nodeModulesPath, fs.constants.F_OK);
         return true;
@@ -157,14 +208,12 @@ const ensureDependencies = async () => {
       return false;
     }
   }
-}
+};
 
-// 单实例
 if (!app.requestSingleInstanceLock()) { log('已有另一个实例在运行,退出'); app.quit(); }
 else app.on('second-instance', () => focusMainWindow());
 app.on('certificate-error', (e, wc, url, err, cert, cb) => { e.preventDefault(); cb(true); });
 
-// 端口清理
 const ensurePortFree = port => {
   return new Promise((resolve) => {
     const server = net.createServer();
@@ -185,9 +234,8 @@ const ensurePortFree = port => {
     server.once('listening', () => { server.close(); resolve(true); });
     server.listen(port, '127.0.0.1');
   });
-}
+};
 
-// 服务器就绪探测
 const waitForServer = (port, timeout = 30000) => {
   return new Promise((resolve) => {
     const start = Date.now();
@@ -222,36 +270,79 @@ const waitForServer = (port, timeout = 30000) => {
     };
     check();
   });
-}
+};
 
-// 注入补丁
+// 补丁脚本：覆盖 WebAuthn API
 const injectPatch = () => {
   const script = `
     (function() {
-      if (window.PublicKeyCredential) {
-        PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(result => {
-          console.log('[Electron] 平台验证器可用:', result);
-        }).catch(e => console.error('[Electron] UVPA 错误:', e));
-      }
+      const { ipcRenderer } = require('electron');
+      // 暴露 API
+      window.electronAPI = {
+        webauthnCreate: (publicKey) => ipcRenderer.invoke('webauthn:create', publicKey),
+        webauthnGet: (publicKey) => ipcRenderer.invoke('webauthn:get', publicKey),
+        webauthnIsAvailable: () => ipcRenderer.invoke('webauthn:isAvailable'),
+      };
+
+      // 检查是否可用
+      const hasWindowsHello = true; // 我们将尝试
+
+      // 覆盖 navigator.credentials.create
       if (navigator.credentials && navigator.credentials.create) {
-        const orig = navigator.credentials.create.bind(navigator.credentials);
-        navigator.credentials.create = function(options) {
-          if (options?.publicKey) {
-            const pk = options.publicKey;
-            if (!pk.authenticatorSelection) pk.authenticatorSelection = { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' };
-            else if (!pk.authenticatorSelection.authenticatorAttachment) pk.authenticatorSelection.authenticatorAttachment = 'platform';
+        const origCreate = navigator.credentials.create.bind(navigator.credentials);
+        navigator.credentials.create = async function(options) {
+          if (options && options.publicKey) {
+            try {
+              const result = await window.electronAPI.webauthnCreate(options.publicKey);
+              return result;
+            } catch (e) {
+              console.error('[Electron] Windows Hello 创建失败，回退到浏览器 API:', e);
+              return origCreate(options);
+            }
           }
-          return orig(options);
+          return origCreate(options);
         };
-        console.log('[Electron] credentials.create 已拦截;');
       }
+
+      // 覆盖 navigator.credentials.get
+      if (navigator.credentials && navigator.credentials.get) {
+        const origGet = navigator.credentials.get.bind(navigator.credentials);
+        navigator.credentials.get = async function(options) {
+          if (options && options.publicKey) {
+            try {
+              const result = await window.electronAPI.webauthnGet(options.publicKey);
+              return result;
+            } catch (e) {
+              console.error('[Electron] Windows Hello 获取失败，回退到浏览器 API:', e);
+              return origGet(options);
+            }
+          }
+          return origGet(options);
+        };
+      }
+
+      // 修改 isUserVerifyingPlatformAuthenticatorAvailable
+      if (window.PublicKeyCredential) {
+        const origIsUVPA = PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable;
+        PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async function() {
+          try {
+            const available = await window.electronAPI.webauthnIsAvailable();
+            if (available) return true;
+            return origIsUVPA ? await origIsUVPA() : false;
+          } catch {
+            return origIsUVPA ? await origIsUVPA() : false;
+          }
+        };
+      }
+
+      console.log('[Electron] WebAuthn API 已覆盖，使用 Windows Hello 优先');
     })();
   `;
-  if (mainWindow && !mainWindow.isDestroyed())
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.executeJavaScript(script).catch(err => log('注入补丁错误: ' + err.message));
-}
+  }
+};
 
-// 创建窗口
 const createWindow = async () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     focusMainWindow();
@@ -275,6 +366,7 @@ const createWindow = async () => {
           enableWebAuthn: true,
           sandbox: false,
           plugins: true,
+          nodeIntegration: true,   // 启用 nodeIntegration 以便在渲染进程中使用 require('electron')
           contextIsolation: false,
         }
       };
@@ -308,9 +400,8 @@ const createWindow = async () => {
     } finally { windowCreationPromise = null; }
   })();
   return windowCreationPromise;
-}
+};
 
-// 启动服务器
 const startServer = async () => {
   if (!CONFIG.AUTO_START_SERVER) return;
   const serverPath = path.join(__dirname, CONFIG.SERVER_PATH);
@@ -336,9 +427,8 @@ const startServer = async () => {
     await ensurePortFree(port);
   }
   log('服务器启动失败,继续加载窗口（可能无法访问）');
-}
+};
 
-// 菜单
 const setupMenu = () => {
   const template = CONFIG.MENU_TEMPLATE;
   if (!template || template.length === 0) return;
@@ -354,9 +444,8 @@ const setupMenu = () => {
     return item;
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(proc));
-}
+};
 
-// 生命周期
 app.whenReady().then(async () => {
   setupMenu();
 
