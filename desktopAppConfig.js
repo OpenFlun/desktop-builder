@@ -7,6 +7,7 @@ export default {
 	serverPath: './server.js',           // 网站启动脚本路径
 	appUrl: 'http://www.abc.com:7296',   // 网站访问地址
 	appName: '我的桌面应用',              // 应用显示名称
+	enableLogging: false,                // 是否启用日志文件记录,默认关闭
 
 	// 窗口配置
 	window: {
@@ -75,6 +76,10 @@ export default {
 		{
 			label: '窗口',
 			submenu: [
+				{
+					label: '在浏览器中打开',
+					click: '__TOGGLE_BROWSER__'
+				},
 				{ role: 'minimize', label: '最小化' },
 				{ role: 'zoom', label: '缩放' },
 				{ type: 'separator' },

@@ -50,12 +50,11 @@
     "README.md"
   ],
   "dependencies": {
-    "electron": "^42.5.1",
+    "electron": "^43.0.0",
     "electron-builder": "^26.15.3",
     "execa": "^9.6.1",
     "fs-extra": "^11.3.6",
-    "chalk": "^5.6.2",
-    "image-size": "^2.0.2"
+    "chalk": "^5.6.2"
   },
   "engines": {
     "node": ">=22.12.0",
