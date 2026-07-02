@@ -42,7 +42,6 @@
     "index.d.ts",
     "lib/",
     "copy-files.js",
-    "default-icon.png",
     "desktopAppConfig.js",
     "electron-main.js",
     "LICENSE",

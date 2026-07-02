@@ -25,8 +25,10 @@ export default {
 		backgroundColor: '#ffffff',      // 加载时的背景色
 		show: false,                       // false=等页面渲染完再显示，防白屏
 		webPreferences: {
-			nodeIntegration: false,        // 是否启用 Node.js（安全起见保持 false）
-			contextIsolation: true,        // 是否启用上下文隔离（保持 true）
+			// 注意：nodeIntegration、contextIsolation、sandbox 将被强制覆盖，此处配置无效
+			// 其他属性（如 plugins, webSecurity, enableWebAuthn 等）仍然生效
+			nodeIntegration: false,        // 此值无效，实际强制为 true
+			contextIsolation: true,        // 此值无效，实际强制为 false
 		},
 	},
 
@@ -102,7 +104,7 @@ export default {
 		appId: 'com.mycompany.myapp',    	// 应用唯一标识（反向域名格式）
 		outputDir: './dist',             	// 安装包输出目录
 
-		// Windows 安装包选项 (NSIS)
+		// ----- Windows 安装包选项 (NSIS) -----
 		nsis: {
 			oneClick: false,                 // true=一键安装，false=向导安装
 			perMachine: true,                // true=安装到所有用户，false=仅当前用户
@@ -112,17 +114,67 @@ export default {
 			shortcutName: '我的桌面应用',     // 快捷方式名称
 			deleteAppDataOnUninstall: false, // 卸载时是否删除用户数据
 		},
+		// Windows 平台通用配置（可覆盖或补充）
+		win: {
+			target: ['nsis'],                // 构建目标：nsis / portable / zip 等
+			// 其他可选字段：icon, publisherName, signingHashAlgorithms 等
+		},
 
+		// ----- macOS 配置（增强） -----
+		mac: {
+			target: ['dmg', 'zip'],          // 构建目标：dmg / zip / pkg / mas 等
+			// 以下为可选高级字段（如需代码签名或 Mac App Store 发布，可取消注释并填写）
+			// identity: 'Developer ID Application: Your Name (TEAM123)', // 签名证书名称
+			// hardenedRuntime: true,        // 启用 Hardened Runtime
+			// entitlements: './build/entitlements.mac.plist', // 签名 entitlements 文件
+			// entitlementsInherit: './build/entitlements.mac.inherit.plist', // Helper 进程 entitlements
+			// provisioningProfile: './build/profile.provisionprofile', // 仅 MAS 需要
+		},
 		// macOS DMG 选项
 		dmg: {
-			iconSize: 256,                		 // 图标大小
+			iconSize: 128,                		 // 图标大小
 			window: { width: 540, height: 380 }, // DMG 窗口尺寸
+			// 以下为增强选项（可选）
+			// background: './build/dmg-background.png',   // DMG 背景图片（建议 PNG）
+			// backgroundColor: '#ffffff',                 // 无背景图时的背景色
+			// icon: './build/volume-icon.icns',           // DMG 卷宗图标（显示在 Finder 侧边栏）
+			// title: '${productName} ${version}',         // 挂载后显示的卷宗名称
+			// format: 'UDZO',                            // 压缩格式（UDZO/ULFO/UDBZ 等）
+			// contents: [                                // 自定义窗口内图标布局
+			//   { x: 130, y: 220, type: 'file' },
+			//   { x: 410, y: 220, type: 'link', path: '/Applications' }
+			// ]
 		},
 
-		// Linux 选项
+		// ----- Linux 配置（增强） -----
 		linux: {
-			category: 'Utility',         // 系统菜单分类: Utility/Development/Network 等
+			target: ['AppImage', 'deb'],     // 构建目标：AppImage / deb / rpm / snap / flatpak 等
+			category: 'Development',         // 系统菜单分类（如 Utility, Network, Development 等）
+			// 以下为可选高级字段
+			// description: '完整的应用描述',   // 长描述
+			// synopsis: '简短描述',           // 短描述
+			// maintainer: '你的名字 <email@example.com>', // 维护者信息
+			// vendor: '我的公司',            // 供应商名称
+			// executableArgs: ['--enable-features=...'], // 启动时的命令行参数
+			// desktop: {                    // 自定义 .desktop 文件内容
+			//   entry: {
+			//     Name: '我的应用',
+			//     Comment: '一个很棒的应用',
+			//     Categories: 'Development;Utility;',
+			//     Keywords: 'app;tool;',
+			//     Terminal: false,
+			//     Type: 'Application'
+			//   }
+			// },
+			// syncDesktopName: true,        // 同步 .desktop 文件名与窗口类名，防止任务栏图标错乱
 		},
+		// 特定格式的额外配置（可选）
+		// appImage: {
+		//   systemIntegration: 'doNotAsk'  // 是否询问系统集成
+		// },
+		// deb: {
+		//   depends: ['libgtk-3-0']        // deb 包的依赖
+		// },
 	},
 
 	// 高级选项
@@ -138,7 +190,7 @@ export default {
 		'.git/',
 		'.hintrc',
 		'.greenlockrc',
-		'node_modules/',
+		'node_modules/', // ← 默认排除,以优化构建和安装速度（避免签名和解压海量文件）
 		'dist/',
 		'docs/',
 		'temp/',
