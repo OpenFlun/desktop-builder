@@ -54,8 +54,7 @@ const require = createRequire(import.meta.url),
   focusMainWindow = () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-      return true;
+      return mainWindow.focus(), true;
     }
     return false;
   },
@@ -64,24 +63,21 @@ const require = createRequire(import.meta.url),
   ensureDependencies = async () => {
     const nodeModulesPath = path.join(__dirname, 'node_modules');
     try {
-      await fs.promises.access(nodeModulesPath, fs.constants.F_OK);
-      return true;
+      return await fs.promises.access(nodeModulesPath, fs.constants.F_OK), true;
     } catch {
       log('未找到 node_modules，开始安装依赖...');
       const depsPath = path.join(__dirname, 'deps.json');
       try {
         await fs.promises.access(depsPath, fs.constants.F_OK);
       } catch {
-        log('错误: deps.json 不存在，无法安装依赖');
-        return false;
+        return log('错误: deps.json 不存在，无法安装依赖'), false;
       }
       let deps;
       try {
         const depsContent = await fs.promises.readFile(depsPath, 'utf-8');
         deps = JSON.parse(depsContent);
       } catch (err) {
-        log('读取 deps.json 失败: ' + err.message);
-        return false;
+        return log('读取 deps.json 失败: ' + err.message), false;
       }
       const pkgPath = path.join(__dirname, 'package.json');
       let pkg;
@@ -89,15 +85,13 @@ const require = createRequire(import.meta.url),
         const pkgContent = await fs.promises.readFile(pkgPath, 'utf-8');
         pkg = JSON.parse(pkgContent);
       } catch (err) {
-        log('读取 package.json 失败: ' + err.message);
-        return false;
+        return log('读取 package.json 失败: ' + err.message), false;
       }
       pkg.dependencies = deps, pkg.devDependencies = {};
       try {
         await fs.promises.writeFile(pkgPath, JSON.stringify(pkg, null, 2), 'utf-8');
       } catch (err) {
-        log('写入 package.json 失败: ' + err.message);
-        return false;
+        return log('写入 package.json 失败: ' + err.message), false;
       }
       try {
         let cmd = 'npm install';
@@ -111,15 +105,12 @@ const require = createRequire(import.meta.url),
         const { stdout, stderr } = await execPromise(cmd, { cwd: __dirname, env: process.env, timeout: 120000 });
         if (stdout && stderr) log('依赖安装完成');
         try {
-          await fs.promises.access(nodeModulesPath, fs.constants.F_OK);
-          return true;
+          return await fs.promises.access(nodeModulesPath, fs.constants.F_OK), true;
         } catch {
-          log('安装 node_modules 失败');
-          return false;
+          return log('安装 node_modules 失败'), false;
         }
       } catch (error) {
-        log('依赖安装失败: ' + error.message), emergencyLog('依赖安装失败堆栈: ' + error.stack);
-        return false;
+        return log('依赖安装失败: ' + error.message), emergencyLog('依赖安装失败堆栈: ' + error.stack), false;
       }
     }
   },
@@ -142,8 +133,7 @@ const require = createRequire(import.meta.url),
         }
         else resolve(false);
       });
-      server.once('listening', () => { server.close(), resolve(true); });
-      server.listen(port, '127.0.0.1');
+      server.once('listening', () => { server.close(), resolve(true); }), server.listen(port, '127.0.0.1');
     });
   },
 
@@ -182,16 +172,10 @@ const require = createRequire(import.meta.url),
 
   // 创建窗口
   createWindow = async () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      focusMainWindow();
-      return mainWindow;
-    }
+    if (mainWindow && !mainWindow.isDestroyed()) return focusMainWindow(), mainWindow;
     if (windowCreationPromise) {
       await windowCreationPromise;
-      if (mainWindow) {
-        focusMainWindow();
-        return mainWindow;
-      }
+      if (mainWindow) return focusMainWindow(), mainWindow;
     }
     windowCreationPromise = (async () => {
       try {
@@ -246,7 +230,7 @@ const require = createRequire(import.meta.url),
     if (!fs.existsSync(serverPath)) { log('服务器文件不存在: ' + serverPath); return; }
 
     let port = 7296;
-    try { port = parseInt(new URL(CONFIG.APP_URL).port) || 7296; } catch (_) { }
+    try { port = parseInt(new URL(CONFIG.APP_URL).port) || 7296 } catch (_) { }
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       await ensurePortFree(port);
@@ -277,9 +261,9 @@ const require = createRequire(import.meta.url),
         if (newItem.submenu) newItem.submenu = processMenu(newItem.submenu);
         if (newItem.click === '__TOGGLE_BROWSER__') newItem.click = openInBrowser;
         else if (typeof newItem.click === 'string' &&
-          /^(async\s+)?(function\s*(\w*\s*)?\(|\(\)\s*=>|async\s*\(\)\s*=>)/.test(newItem.click.trim())) {
-          try { newItem.click = eval(newItem.click); } catch (_) { }
-        }
+          /^(async\s+)?(function\s*(\w*\s*)?\(|\(\)\s*=>|async\s*\(\)\s*=>)/.test(newItem.click.trim()))
+          try { newItem.click = eval(newItem.click) } catch (_) { }
+
         return newItem;
       });
     };

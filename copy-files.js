@@ -17,7 +17,7 @@ const __filename = fileURLToPath(import.meta.url), __dirname = path.dirname(__fi
 const copyFile = () => {
     console.log(`🔍 检查 ${fileName} 文件...`), console.log(`📁 项目根目录:${targetDir}`);
     try {
-        if (fs.existsSync(targetFile)) return true;  // 如果目标文件存在,则返回true并结束函数
+        if (fs.existsSync(targetFile)) return console.log('配置文件已存在,跳过创建;'), true; // 如果文件已存在，则跳过创建');
         console.log(`⚠️ 在项目根目录未找到 ${fileName} 文件，正在创建...`);
 
         fs.copyFileSync(sourceFile, targetFile);     // 复制源文件到项目根目录
