@@ -62,12 +62,16 @@ export default {
 
 ### 2. 构建桌面应用
 
-执行构建命令（根据当前系统生成对应安装包）：
+1. 执行构建命令（根据当前系统生成对应安装包）：
 
 ```bash
 npx desktop-builder build
 ```
-
+2. 编程方式构建
+```js
+import { build } from '@flun/desktop-builder';
+await build();
+```
 首次运行会下载 Electron 运行时（约 100MB），请耐心等待。
 构建完成后，安装包将输出到 `./dist` 目录（可通过 `build.outputDir` 自定义）。
 
