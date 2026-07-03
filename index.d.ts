@@ -25,12 +25,7 @@ declare module './lib/build.js' {
  *  // 基础示例
  *   import { build } from '@flun/desktop-builder';
  *
- *   try {
- *       await build();
- *   } catch (err) {
- *       console.error('❌ 失败:', err.message);
- *       process.exit(1);
- *   }
+ *   await build();
  */
 declare module './index.js' {
     export { build } from './lib/build.js';
