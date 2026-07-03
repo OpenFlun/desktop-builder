@@ -13,7 +13,6 @@ import { createRequire } from 'module';
 let mainWindow = null, serverProcess = null, windowCreationPromise = null, loadRetryCount = 0;
 const require = createRequire(import.meta.url),
   __dirname = path.dirname(fileURLToPath(import.meta.url)), execPromise = promisify(exec),
-
   // 配置注入
   CONFIG = {
     APP_URL: JSON.parse('__APP_URL__'),
@@ -21,15 +20,11 @@ const require = createRequire(import.meta.url),
     SERVER_PATH: JSON.parse('__SERVER_PATH__'),
     AUTO_START_SERVER: JSON.parse('__AUTO_START_SERVER__'),
     AUTO_KILL_SERVER: JSON.parse('__AUTO_KILL_SERVER__'),
-    MENU_TEMPLATE: __MENU_TEMPLATE__,
     LOGGING_ENABLED: JSON.parse('__LOGGING_ENABLED__'),
+    MENU_TEMPLATE: __MENU_TEMPLATE__,
   }, TARGET_URL = CONFIG.APP_URL,
   // 命令行开关
-  switches = [
-    'no-sandbox',
-    'ignore-certificate-errors',
-    'allow-insecure-localhost',
-  ],
+  switches = ['no-sandbox', 'ignore-certificate-errors', 'allow-insecure-localhost'],
 
   // --------------------- 函数声明 ---------------------
   // 日志（根据配置决定是否写入）
@@ -113,9 +108,7 @@ const require = createRequire(import.meta.url),
         } catch {
           log('未找到 package-lock.json，使用 npm install');
         }
-        const { stdout, stderr } = await execPromise(cmd, {
-          cwd: __dirname, env: process.env, timeout: 120000
-        });
+        const { stdout, stderr } = await execPromise(cmd, { cwd: __dirname, env: process.env, timeout: 120000 });
         if (stdout && stderr) log('依赖安装完成');
         try {
           await fs.promises.access(nodeModulesPath, fs.constants.F_OK);
@@ -268,8 +261,7 @@ const require = createRequire(import.meta.url),
       const ready = await waitForServer(port, 30000);
       if (ready) return;
 
-      log(`服务器未就绪 (尝试 ${attempt}/3),重试...`);
-      killServerProcess(), await sleep(2000);
+      log(`服务器未就绪 (尝试 ${attempt}/3),重试...`), killServerProcess(), await sleep(2000);
     }
     log('服务器启动失败,尝试重新加载窗口');
   },
