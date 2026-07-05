@@ -13,7 +13,6 @@ import { createRequire } from 'module';
 let mainWindow = null, serverProcess = null, windowCreationPromise = null, loadRetryCount = 0;
 const require = createRequire(import.meta.url),
   __dirname = path.dirname(fileURLToPath(import.meta.url)), execPromise = promisify(exec),
-  // 配置注入
   CONFIG = {
     APP_URL: JSON.parse('__APP_URL__'),
     WINDOW_CONFIG: JSON.parse('__WINDOW_CONFIG__'),
@@ -23,15 +22,10 @@ const require = createRequire(import.meta.url),
     LOGGING_ENABLED: JSON.parse('__LOGGING_ENABLED__'),
     MENU_TEMPLATE: __MENU_TEMPLATE__,
   }, TARGET_URL = CONFIG.APP_URL,
-  // 命令行开关
   switches = ['no-sandbox', 'ignore-certificate-errors', 'allow-insecure-localhost'],
-
-  // --------------------- 函数声明 ---------------------
-  // 日志（根据配置决定是否写入）
+  // --------------------- 工具函数 ---------------------
   writeLog = (filePath, msg) => {
-    try {
-      fs.appendFileSync(filePath, new Date().toISOString() + ' ' + msg + '\n');
-    } catch (_) { }
+    try { fs.appendFileSync(filePath, new Date().toISOString() + ' ' + msg + '\n'); } catch (_) { }
   },
   log = msg => {
     if (!CONFIG.LOGGING_ENABLED) return;
@@ -41,7 +35,6 @@ const require = createRequire(import.meta.url),
     if (!CONFIG.LOGGING_ENABLED) return;
     writeLog(path.join(process.cwd(), 'myapp_emergency.log'), msg);
   },
-  // 服务器管理
   killServerProcess = () => {
     if (!serverProcess) return;
     try {
@@ -50,7 +43,6 @@ const require = createRequire(import.meta.url),
     } catch (_) { }
     serverProcess = null;
   },
-
   focusMainWindow = () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -59,7 +51,6 @@ const require = createRequire(import.meta.url),
     return false;
   },
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
-  // 依赖安装
   ensureDependencies = async () => {
     const nodeModulesPath = path.join(__dirname, 'node_modules');
     try {
@@ -94,20 +85,40 @@ const require = createRequire(import.meta.url),
         return log('写入 package.json 失败: ' + err.message), false;
       }
       try {
-        let cmd = 'npm install';
+        let cmd = 'npm install --ignore-scripts --no-optional --force --no-audit --no-fund';
         const lockPath = path.join(__dirname, 'package-lock.json');
         try {
-          await fs.promises.access(lockPath, fs.constants.F_OK);
-          log('找到 package-lock.json，使用 npm ci'), cmd = 'npm ci';
+          await fs.promises.access(lockPath, fs.constants.F_OK), log('找到 package-lock.json，使用 npm ci');
+          cmd = 'npm ci --ignore-scripts --no-optional --force --no-audit --no-fund';
         } catch {
           log('未找到 package-lock.json，使用 npm install');
         }
-        const { stdout, stderr } = await execPromise(cmd, { cwd: __dirname, env: process.env, timeout: 120000 });
-        if (stdout && stderr) log('依赖安装完成');
+
+        const env = { ...process.env, npm_config_ignore_scripts: 'true', npm_config_optional: 'false' },
+          { stdout, stderr } = await execPromise(cmd, { cwd: __dirname, env: env, timeout: 120000, });
+        log('依赖安装完成');
+
+        // 删除 node 和平台特定 node-* 目录
+        try {
+          const entries = await fs.promises.readdir(nodeModulesPath, { withFileTypes: true }), toDelete = [];
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const name = entry.name;
+            if (name === 'node') toDelete.push(path.join(nodeModulesPath, name));
+            if (/^node-(win|darwin|linux|freebsd|sunos|aix)-/.test(name)) toDelete.push(path.join(nodeModulesPath, name));
+          }
+
+          for (const dir of toDelete) {
+            await fs.promises.rm(dir, { recursive: true, force: true }), log(`已删除问题目录: ${dir}`);
+          }
+        } catch (cleanErr) {
+          log('清理目录时出错（可忽略）: ' + cleanErr.message);
+        }
+
         try {
           return await fs.promises.access(nodeModulesPath, fs.constants.F_OK), true;
         } catch {
-          return log('安装 node_modules 失败'), false;
+          return log('安装后 node_modules 仍然不存在'), false;
         }
       } catch (error) {
         return log('依赖安装失败: ' + error.message), emergencyLog('依赖安装失败堆栈: ' + error.stack), false;
@@ -115,7 +126,6 @@ const require = createRequire(import.meta.url),
     }
   },
 
-  // 端口检查
   ensurePortFree = port => {
     return new Promise((resolve) => {
       const server = net.createServer();
@@ -137,7 +147,6 @@ const require = createRequire(import.meta.url),
     });
   },
 
-  // 等待服务器就绪
   waitForServer = (port, timeout = 30000) => {
     return new Promise((resolve) => {
       const start = Date.now(), protocol = new URL(CONFIG.APP_URL).protocol,
@@ -170,7 +179,6 @@ const require = createRequire(import.meta.url),
     }
   },
 
-  // 创建窗口
   createWindow = async () => {
     if (mainWindow && !mainWindow.isDestroyed()) return focusMainWindow(), mainWindow;
     if (windowCreationPromise) {
@@ -183,13 +191,9 @@ const require = createRequire(import.meta.url),
           ...CONFIG.WINDOW_CONFIG,
           webPreferences: {
             ...CONFIG.WINDOW_CONFIG.webPreferences,
-            webSecurity: true,
-            allowRunningInsecureContent: true,
-            enableWebAuthn: true,
-            plugins: true,
-            nodeIntegration: true,
-            sandbox: false,
-            contextIsolation: false,
+            webSecurity: true, allowRunningInsecureContent: true, enableWebAuthn: true,
+            plugins: true, nodeIntegration: true,
+            sandbox: false, contextIsolation: false,
           }
         };
         mainWindow = new BrowserWindow(winConfig);
@@ -223,7 +227,6 @@ const require = createRequire(import.meta.url),
     return windowCreationPromise;
   },
 
-  // 启动服务器
   startServer = async () => {
     if (!CONFIG.AUTO_START_SERVER) return;
     const serverPath = path.join(__dirname, CONFIG.SERVER_PATH);
@@ -250,7 +253,6 @@ const require = createRequire(import.meta.url),
     log('服务器启动失败,尝试重新加载窗口');
   },
 
-  // 菜单设置（处理特殊标记）
   setupMenu = () => {
     const template = CONFIG.MENU_TEMPLATE;
     if (!template || template.length === 0) return;
@@ -285,7 +287,7 @@ try {
   app.commandLine.appendSwitch('vmodule', 'webauthn*=3');
   log(`已映射 ${hostname} 到 127.0.0.1`);
 } catch (_) { }
-// 单例锁
+
 if (!app.requestSingleInstanceLock()) { log('已有另一个实例在运行,退出'); app.quit(); }
 else app.on('second-instance', () => focusMainWindow());
 app.on('certificate-error', (e, wc, url, err, cert, cb) => { e.preventDefault(), cb(true); });
@@ -294,7 +296,7 @@ app.whenReady().then(async () => {
   setupMenu();
 
   const depsOk = await ensureDependencies();
-  if (!depsOk) log('依赖安装失败，再次尝试启动服务器（可能失败）');
+  if (!depsOk) log('依赖安装失败,再次尝试启动服务器（可能失败）');
   await startServer(), await createWindow();
 });
 
