@@ -34,6 +34,27 @@
 
 ---
 
+## 配置
+
+### 允许安装脚本执行
+
+本包在安装时可能触发某些依赖包的自动脚本（如 `postinstall` 等）;如果你的 npm 全局配置或项目配置禁止了脚本执行（例如设置了 `ignore-scripts=true`）,可能会导致安装不完整或运行时异常;
+
+推荐在项目根目录的 `package.json` 中添加 `allowScripts` 字段,显式放行本包及其依赖的脚本:
+
+```json
+{
+  "allowScripts": {
+    "@flun/windows": true
+    // 如果依赖的其它包（如 bcrypt、electron-winstaller 等）也有脚本,请按需添加,格式相同
+  }
+}
+```
+
+> 如果你信任所有安装包,也可以直接在项目 `.npmrc` 中设置 `allow-scripts = false`（表示关闭脚本拦截,所有脚本均允许执行）,或删除 `ignore-script`字段;
+
+---
+
 ## 📦 安装
 
 在你的项目目录下安装为开发依赖：
