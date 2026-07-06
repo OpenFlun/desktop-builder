@@ -45,7 +45,7 @@
 ```json
 {
   "allowScripts": {
-    "@flun/windows": true
+    "@flun/desktop-builder": true
     // 如果依赖的其它包（如 bcrypt、electron-winstaller 等）也有脚本,请按需添加,格式相同
   }
 }
