@@ -1,6 +1,6 @@
 {
   "name": "@flun/desktop-builder",
-  "version": "1.0.6",
+  "version": "1.1.0",
   "description": "将任意 Node.js 网站一键打包为当前桌面应用('win', 'mac', 'linux')（基于 Electron）,支持高度自定义配置;",
   "type": "module",
   "types": "index.d.ts",
