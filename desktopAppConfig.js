@@ -22,7 +22,7 @@ export default {
 		alwaysOnTop: false,               // 是否始终置顶
 		frame: true,                      // 是否显示标题栏
 		titleBarStyle: 'default',         // 标题栏样式: default/hidden/hiddenInset
-		backgroundColor: '#ffffff',      // 加载时的背景色
+		backgroundColor: '#5127ce',      // 加载时的背景色
 		show: false,                       // false=等页面渲染完再显示，防白屏
 		webPreferences: {
 			// 注意：nodeIntegration、contextIsolation、sandbox 将被强制覆盖，此处配置无效
@@ -86,6 +86,14 @@ export default {
 				{ role: 'zoom', label: '缩放' },
 				{ type: 'separator' },
 				{ role: 'close', label: '关闭' }
+			]
+		},
+		{
+			label: '主题',
+			submenu: [
+				{ label: '浅色', click: '() => { require("electron").nativeTheme.themeSource = "light"; }' },
+				{ label: '深色', click: '() => { require("electron").nativeTheme.themeSource = "dark"; }' },
+				{ label: '跟随系统', click: '() => { require("electron").nativeTheme.themeSource = "system"; }' }
 			]
 		},
 		{
