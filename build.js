@@ -8,10 +8,13 @@ import { execa } from 'execa';
 import { minimatch } from 'minimatch';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = createRequire(import.meta.url),
-    CACHE_DIR = path.join(os.homedir(), '.electron-builder-cache'), DEFAULT_ICON = path.join(__dirname, 'app.png'),
-    DEFAULT_TARGETS = { win: ['nsis'], mac: ['dmg'], linux: ['AppImage'] },
-    DEFAULT_INSTALLER_ICON = path.join(__dirname, 'setup.ico'), DEFAULT_UNINSTALLER_ICON = path.join(__dirname, 'un.ico');
+    CACHE_DIR = path.join(os.homedir(), '.electron-builder-cache'),
+    DEFAULT_TARGETS = { win: ['nsis'], mac: ['dmg'], linux: ['AppImage'] };
 
+/**
+ * 构建桌面应用程序
+ * >查看定义:@see {@link build}
+ */
 const build = async () => {
     const configPath = path.join(process.cwd(), 'desktopAppConfig.js');
     if (!(await fs.pathExists(configPath)))
@@ -48,7 +51,8 @@ const build = async () => {
 
                 if (pattern.startsWith('./')) {
                     const strippedPattern = pattern.slice(2);
-                    if (isRootFile && minimatch(relative, strippedPattern, { dot: true, matchBase: false })) return false;
+                    if (isRootFile && minimatch(relative, strippedPattern, { dot: true, matchBase: false }))
+                        return false;
                     continue;
                 }
 
@@ -73,9 +77,15 @@ const build = async () => {
     else console.log(chalk.yellow('[警告] 未配置菜单,将使用默认英文菜单;'));
 
     const windowConfig = {
-        width: 1200, height: 800, minWidth: 800, minHeight: 600,
-        resizable: true, fullscreenable: true, frame: true,
-        alwaysOnTop: false, show: false,
+        width: 1200,
+        height: 800,
+        minWidth: 800,
+        minHeight: 600,
+        resizable: true,
+        fullscreenable: true,
+        frame: true,
+        alwaysOnTop: false,
+        show: false,
         backgroundColor: '#ffffff',
         webPreferences: { nodeIntegration: false, contextIsolation: true },
         ...(config.window || {}),
@@ -109,24 +119,14 @@ const build = async () => {
     await fs.writeJson(path.join(tempDir, 'deps.json'), allDeps, { spaces: 2 });
     console.log(chalk.blue('[信息] 成功写入 ' + Object.keys(allDeps).length + ' 个依赖包到 deps.json'));
 
-    const handleIcon = async (userPath, defaultPath, img, label) => {
-        const resolved = userPath ? path.resolve(process.cwd(), userPath) : null;
-        let src = (resolved && (await fs.pathExists(resolved))) ? resolved : defaultPath;
-        await fs.copy(src, path.join(tempDir, img));
-        if (src !== resolved) console.log(chalk.yellow(`[警告] 未找到自定义${label}图标，将使用默认图标;`));
-        return src;
-    };
-
-    await handleIcon(config.branding?.appIcon, DEFAULT_ICON, 'app.png', '应用');
-    await handleIcon(config.branding?.installerIcon, DEFAULT_INSTALLER_ICON, 'installer.ico', '安装');
-    await handleIcon(config.branding?.uninstallerIcon, DEFAULT_UNINSTALLER_ICON, 'uninstaller.ico', '卸载');
-
+    // 继续构建配置
     let electronVersion;
     try {
-        const electronPkgPath = require.resolve('electron/package.json'), electronPkg = await fs.readJson(electronPkgPath);
+        const electronPkgPath = require.resolve('electron/package.json'),
+            electronPkg = await fs.readJson(electronPkgPath);
         electronVersion = electronPkg.version, console.log(chalk.blue('[信息] Electron 版本: ' + electronVersion));
     } catch (err) {
-        console.error(chalk.red('[错误] 未找到 electron 包，请先安装;')), process.exit(1);
+        console.error(chalk.red('[错误] 未找到 electron 包,请先安装;')), process.exit(1);
     }
 
     const platformInfo = {
@@ -143,29 +143,28 @@ const build = async () => {
             createDesktopShortcut: true,
             createStartMenuShortcut: true,
             shortcutName: config.appName,
-            deleteAppDataOnUninstall: false,
-            installerIcon: 'installer.ico',
-            uninstallerIcon: 'uninstaller.ico',
-        },
-        defaultDmg = { iconSize: 128, window: { width: 540, height: 380 } },
+            deleteAppDataOnUninstall: false
+        }, defaultDmg = { iconSize: 80, window: { width: 540, height: 380 } },
+        // 构建 configObj
         configObj = {
             files: [
-                '!builder.json',
-                '!app.png', '!installer.ico', '!uninstaller.ico'
+                '!build/**/*', '!builder.json',
+                '!icon.png', '!installerIcon.ico', '!uninstallerIcon.ico',
             ],
             appId: buildConfig.appId || 'com.example.app',
             productName: config.appName,
             directories: { output: buildConfig.outputDir || './dist' },
             asar: false,
-            electronVersion: electronVersion,
             npmRebuild: false,
+            electronVersion: electronVersion,
             nsis: { ...defaultNsis, ...(buildConfig.nsis || {}) },
             dmg: { ...defaultDmg, ...(buildConfig.dmg || {}) },
-            icon: 'app.png',
-        }, userBuild = { ...buildConfig };
+        },
+        userBuild = { ...buildConfig }; // 合并用户自定义的 build 配置
     delete userBuild.nsis, delete userBuild.dmg, delete userBuild.outputDir, delete userBuild.appId;
     Object.assign(configObj, userBuild);
 
+    // 设置平台默认目标
     const platformKey = currentPlatform;
     if (!configObj[platformKey]) configObj[platformKey] = { target: DEFAULT_TARGETS[platformKey] };
     else if (!configObj[platformKey].target) configObj[platformKey].target = DEFAULT_TARGETS[platformKey];
@@ -173,16 +172,19 @@ const build = async () => {
     const configFile = path.join(tempDir, 'builder.json');
     await fs.writeJson(configFile, configObj, { spaces: 2 });
 
+    // 执行 electron-builder
     const args = [
         '--no-install', 'electron-builder', '--project',
         tempDir, '--config', configFile, platformArg
     ];
     console.log(chalk.blue('[信息] 正在执行构建: npx ' + args.join(' ')));
+
     let retries = 3, lastError = null, success = false;
     while (retries > 0) {
         try {
             await execa('npx', args, {
-                cwd: process.cwd(), stdio: 'inherit',
+                cwd: process.cwd(),
+                stdio: 'inherit',
                 env: {
                     ...process.env,
                     ELECTRON_MIRROR: 'https://npmmirror.com/mirrors/electron/',
@@ -197,15 +199,15 @@ const build = async () => {
         } catch (error) {
             lastError = error, retries--;
             if (retries > 0) {
-                console.warn(chalk.yellow(`[警告] 构建失败，正在重试...（剩余 ${retries} 次尝试）`));
+                console.warn(chalk.yellow(`[警告] 构建失败,正在重试...（剩余 ${retries} 次尝试）`));
                 console.warn(chalk.yellow('      错误信息: ' + error.message));
                 await new Promise(resolve => setTimeout(resolve, 5000));
             }
         }
     }
 
-    if (!success) console.error(chalk.red('[错误] 构建失败，已尝试 3 次:'), lastError), process.exit(1);
-
+    if (!success) console.error(chalk.red('[错误] 构建失败,已尝试 3 次:'), lastError), process.exit(1);
+    // 复制安装包到输出目录
     const tempDistDir = path.join(tempDir, 'dist'), userOutputDir = buildConfig.outputDir || './dist',
         targetDir = path.resolve(process.cwd(), userOutputDir);
 
@@ -234,14 +236,16 @@ const build = async () => {
     else console.warn(chalk.yellow('[警告] 未找到 dist 目录;'));
 };
 
+/**
+ * 运行命令行接口
+ * >查看定义:@see {@link runCLI}
+ */
 const runCLI = async () => {
     const args = process.argv.slice(2), command = args[0];
-
     if (!command || command === 'help' || command === '--help' || command === '-h') {
         console.log(`用法:先配置 desktopAppConfig.js 文件,然后运行-> desktop-builder build  指令构建桌面应用程序`);
         process.exit(0);
     }
-
     if (command === 'build') await build();
     else {
         console.error(`未知命令: ${command}`);

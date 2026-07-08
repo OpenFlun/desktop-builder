@@ -38,18 +38,19 @@
     "access": "public"
   },
   "files": [
-    "index.js",
-    "index.d.ts",
-    "lib/",
+    "build/",
+    "build.js",
     "copy-files.js",
     "desktopAppConfig.js",
     "electron-main.js",
+    "index.js",
+    "index.d.ts",
     "LICENSE",
     "CHANGELOG.md",
     "README.md"
   ],
   "dependencies": {
-    "electron": "^43.0.0",
+    "electron": "^43.1.0",
     "electron-builder": "^26.15.3",
     "execa": "^9.6.1",
     "fs-extra": "^11.3.6",

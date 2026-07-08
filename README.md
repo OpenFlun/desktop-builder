@@ -1,6 +1,6 @@
 # @flun/desktop-builder
 
-> 将任意 Node.js 网站一键打包为当前桌面应用('win', 'mac', 'linux')（基于 Electron）,支持高度自定义配置;
+> 将任意 Node.js 网站一键打包为当前桌面应用 (Windows, macOS, Linux)（基于 Electron）,支持高度自定义配置;
 
 [![npm version](https://img.shields.io/npm/v/@flun/desktop-builder.svg)](https://www.npmjs.com/package/@flun/desktop-builder)
 [![license](https://img.shields.io/npm/l/@flun/desktop-builder.svg)](https://github.com/OpenFlun/desktop-builder/blob/main/LICENSE)
@@ -27,11 +27,11 @@
 - 🖥️ **跨平台支持**：Windows、macOS、Linux（仅构建当前运行平台,但支持输出多种格式）;
 - 🔌 **自带 Node.js 运行时**：利用 Electron 内置的 Node.js 执行后端服务,用户无需额外安装;
 - 📦 **灵活的安装选项**：NSIS 支持一键/向导模式,DMG 支持自定义背景、布局,Linux 支持多种包格式;
-- 🎨 **品牌自定义**：应用图标、安装/卸载图标、DMG 卷宗图标、背景图片等;
+- 🎨 **品牌自定义**：应用图标、安装/卸载图标、DMG 卷宗图标、背景图片等（通过 `build` 中各平台字段配置）;
 - 🧩 **菜单自定义**：完全自定义应用菜单（语言、角色、点击回调,甚至内联函数）;
 - 📁 **精细排除**：可排除不需要的文件、依赖包和最终输出文件;
 - 🔧 **可扩展**：允许直接添加 `electron-builder` 任意配置字段,并支持后处理钩子;
-- ⏳ **依赖安装进度界面**：首次启动时若 `node_modules` 不存在,自动显示内嵌进度窗口.实时输出 `npm install` / `npm ci` 的完整日志,避免误以为应用卡死;
+- ⏳ **依赖安装进度界面**：首次启动时若 `node_modules` 不存在,自动显示内嵌进度窗口,实时输出 `npm install` / `npm ci` 的完整日志,避免误以为应用卡死;
 - 🎨 **主题切换支持**：通过菜单配置轻松切换浅色/深色/跟随系统主题,提升用户体验;
 
 ---
@@ -42,7 +42,7 @@
 
 本包在安装时可能触发某些依赖包的自动脚本（如 `postinstall` 等）;如果你的 npm 全局配置或项目配置禁止了脚本执行（例如设置了 `ignore-scripts=true`）,可能会导致安装不完整或运行时异常;
 
-推荐在项目根目录的 `package.json` 中添加 `allowScripts` 字段,显式放行本包及其依赖的脚本:
+推荐在项目根目录的 `package.json` 中添加 `allowScripts` 字段,显式放行本包及其依赖的脚本：
 
 ```json
 {
@@ -53,7 +53,7 @@
 }
 ```
 
-> 如果你信任所有安装包,也可以直接在项目 `.npmrc` 中设置 `allow-scripts = false`（表示关闭脚本拦截,所有脚本均允许执行）,或删除 `ignore-script`字段;
+> 如果你信任所有安装包,也可以直接在项目 `.npmrc` 中设置 `allow-scripts = false`（表示关闭脚本拦截,所有脚本均允许执行）,或删除 `ignore-script` 字段;
 
 ---
 
@@ -65,7 +65,7 @@
 npm install -D @flun/desktop-builder
 ```
 
-安装完成后,`postinstall` 脚本会自动将 `desktopAppConfig.js` 配置文件模板复制到你的项目根目录（如果不存在）;
+安装完成后,`postinstall` 脚本会自动将 `desktopAppConfig.js` 配置文件模板以及 `build/` 目录（含默认图标等资源）复制到你的项目根目录（如果不存在）;
 
 ---
 
@@ -85,16 +85,19 @@ export default {
 
 ### 2. 构建桌面应用
 
-1. 执行构建命令（根据当前系统生成对应安装包）：
+执行构建命令（根据当前系统生成对应安装包）：
 
 ```bash
 npx desktop-builder build
 ```
-2. 编程方式构建
+
+或以编程方式构建：
+
 ```js
 import { build } from '@flun/desktop-builder';
 await build();
 ```
+
 首次运行会下载 Electron 运行时（约 100MB）,请耐心等待;
 构建完成后,安装包将输出到 `./dist` 目录（可通过 `build.outputDir` 自定义）;
 
@@ -111,13 +114,14 @@ await build();
 | **`appName`**         | `string`   | **必填** | 应用显示名称（标题栏、快捷方式、安装程序等）                      |
 | `enableLogging`       | `boolean`  | `false`  | 是否启用日志文件（调试用）,日志会写入桌面 `myapp_debug.log`       |
 | `window`              | `object`   | 见下方   | 主窗口外观与行为配置（部分字段会被强制覆盖,请注意说明）           |
-| `branding`            | `object`   | 见下方   | 图标品牌配置                                                      |
 | `menu`                | `array`    | 见示例   | 应用菜单模板（支持角色、分隔符、点击回调）                        |
 | `build`               | `object`   | 见下方   | 打包输出配置（可随意添加 `electron-builder` 支持的其他字段）      |
 | `advanced`            | `object`   | 见下方   | 高级运行行为                                                      |
 | `excludeFiles`        | `string[]` | `[]`     | 复制到临时目录时排除的文件/目录（支持 glob）                      |
 | `excludeDependencies` | `string[]` | `[]`     | 从最终依赖列表中移除的 npm 包名（不会打包）                       |
 | `excludeOutputs`      | `string[]` | `[]`     | 从最终输出目录中排除的安装包文件（如 `*.blockmap`、`latest.yml`） |
+
+> **注意**：图标配置不再使用独立的 `branding` 字段,而是直接在 `build.win.icon`、`build.mac.icon`、`build.linux.icon` 中分别指定,具体见下方 `build` 配置说明;
 
 ---
 
@@ -168,21 +172,6 @@ window: {
 
 ---
 
-### 品牌图标 (`branding`)
-
-```javascript
-branding: {
-  appIcon: null,          // 应用图标路径（建议 512×512 PNG）,默认使用包内置图标
-  installerIcon: null,    // Windows 安装程序图标（必须 .ico）,默认使用包内置图标
-  uninstallerIcon: null,  // Windows 卸载程序图标（必须 .ico）,默认使用包内置图标
-}
-```
-
-- 路径相对于项目根目录;
-- 若未提供或文件不存在,将使用 `@flun/desktop-builder` 内置的默认图标;
-
----
-
 ### 菜单配置 (`menu`)
 
 支持 Electron 标准菜单模板,可自由修改语言和结构;示例：
@@ -219,49 +208,55 @@ build: {
   // ----- Windows 配置 -----
   win: {
     target: ['nsis'],                 // 可指定 nsis/portable/zip 等
-    // 其他可选：icon, publisherName, signingHashAlgorithms 等
+    icon: './build/icon.png',         // 应用图标（建议 512×512 PNG）
+    // 其他可选：publisherName, signingHashAlgorithms 等
   },
   nsis: {
-    oneClick: false,                        // true=一键安装,false=向导安装
-    perMachine: true,                       // true=安装到所有用户（需管理员）,false=当前用户
-    allowToChangeInstallationDirectory: true, // 是否允许用户更改安装目录
-    createDesktopShortcut: true,            // 创建桌面快捷方式
-    createStartMenuShortcut: true,          // 创建开始菜单快捷方式
-    shortcutName: '我的桌面应用',            // 快捷方式名称（默认为 appName）
-    deleteAppDataOnUninstall: false,        // 卸载时是否删除用户数据
+    oneClick: false,                           // true=一键安装,false=向导安装
+    perMachine: true,                          // true=安装到所有用户（需管理员）,false=当前用户
+    allowToChangeInstallationDirectory: true,  // 是否允许用户更改安装目录
+    createDesktopShortcut: true,               // 创建桌面快捷方式
+    createStartMenuShortcut: true,             // 创建开始菜单快捷方式
+    shortcutName: '我的桌面应用',               // 快捷方式名称（默认为 appName）
+    deleteAppDataOnUninstall: false,           // 卸载时是否删除用户数据
+    installerHeader: './build/installerHeader.bmp',      // 安装头横幅 150×57
+    installerSidebar: './build/installerSidebar.bmp',    // 安装侧边栏 164×314
+    uninstallerSidebar: './build/uninstallerSidebar.bmp',// 卸载侧边栏 164×314
+    installerIcon: './build/installerIcon.ico',          // 安装程序图标（必须 .ico）
+    uninstallerIcon: './build/uninstallerIcon.ico'       // 卸载程序图标（必须 .ico）
   },
 
-  // ----- macOS 配置（增强） -----
+  // ----- macOS 配置 -----
   mac: {
     target: ['dmg', 'zip'],          // 同时生成 dmg 和 zip（zip 可用于自动更新）
+    icon: './build/icon.png',        // 应用图标（建议 512×512 PNG）
     // 可选高级字段（代码签名、entitlements 等）
     // identity: 'Developer ID Application: Your Name (TEAM123)',
     // hardenedRuntime: true,
     // entitlements: './build/entitlements.mac.plist',
     // entitlementsInherit: './build/entitlements.mac.inherit.plist',
+    // provisioningProfile: './build/profile.provisionprofile', // 仅 MAS 需要
   },
   dmg: {
-    iconSize: 128,
-    window: {
-      width: 540,
-      height: 380,
-    },
+    iconSize: 80,
+    window: { width: 540, height: 380 },
     // 增强选项（可选）
-    // background: './build/dmg-background.png',   // 背景图片
-    // backgroundColor: '#ffffff',                 // 背景色
-    // icon: './build/volume-icon.icns',           // 卷宗图标
+    // background: './build/background.png',       // 背景图片
+    // backgroundColor: '#5127ce',               // 无背景图时的背景色
+    // icon: 'icon: build/dmg-icon.icns',          // 卷宗图标
     // title: '${productName} ${version}',         // 卷宗名称
-    // format: 'UDZO',                            // 压缩格式
-    // contents: [                                // 自定义图标布局
+    // format: 'UDZO',                             // 压缩格式
+    // contents: [                                 // 自定义图标布局
     //   { x: 130, y: 220, type: 'file' },
     //   { x: 410, y: 220, type: 'link', path: '/Applications' }
     // ]
   },
 
-  // ----- Linux 配置（增强） -----
+  // ----- Linux 配置 -----
   linux: {
-    target: ['AppImage', 'deb'],     // 可同时生成多种格式
-    category: 'Development',         // 系统菜单分类
+    target: ['AppImage', 'deb'],     // 可同时生成多种格式：AppImage / deb / rpm / snap / flatpak 等
+    category: 'Development',         // 系统菜单分类（如 Utility, Network, Development 等）
+    icon: './build/icon.png',        // 应用图标（建议 512×512 PNG）
     // 可选高级字段
     // description: '完整的应用描述',
     // synopsis: '简短描述',
@@ -278,7 +273,7 @@ build: {
     //     Type: 'Application'
     //   }
     // },
-    // syncDesktopName: true,
+    // syncDesktopName: true,        // 同步 .desktop 文件名与窗口类名,防止任务栏图标错乱
   },
   // 特定格式的额外配置（可选）
   // appImage: { systemIntegration: 'doNotAsk' },
@@ -383,12 +378,6 @@ export default {
     },
   },
 
-  branding: {
-    appIcon: './assets/icon.png',
-    installerIcon: './assets/setup.ico',
-    uninstallerIcon: './assets/uninstall.ico',
-  },
-
   menu: [
     {
       label: '文件',
@@ -405,7 +394,10 @@ export default {
     appId: 'com.mycompany.myapp',
     outputDir: './release',
 
-    win: { target: ['nsis'] },
+    win: {
+      target: ['nsis'],
+      icon: './build/icon.png',
+    },
     nsis: {
       oneClick: false,
       perMachine: true,
@@ -414,19 +406,23 @@ export default {
       createStartMenuShortcut: true,
       shortcutName: '我的应用',
       deleteAppDataOnUninstall: false,
+      installerIcon: './build/installerIcon.ico',
+      uninstallerIcon: './build/uninstallerIcon.ico',
     },
 
     mac: {
       target: ['dmg', 'zip'],
+      icon: './build/icon.png',
       // 如需签名,请取消注释并填写
       // identity: 'Developer ID Application: My Company (TEAM123)',
       // hardenedRuntime: true,
     },
     dmg: {
-      iconSize: 128,
+      iconSize: 80,
       window: { width: 540, height: 380 },
-      background: './build/dmg-background.png',
+      background: './build/background.png',
       backgroundColor: '#ffffff',
+      icon: 'build/dmg-icon.icns',
       title: '${productName} ${version}',
       contents: [
         { x: 130, y: 220, type: 'file' },
@@ -437,6 +433,7 @@ export default {
     linux: {
       target: ['AppImage', 'deb'],
       category: 'Development',
+      icon: './build/icon.png',
       description: '一个功能强大的应用',
       maintainer: '我的名字 <my@email.com>',
       vendor: '我的公司',
@@ -465,7 +462,7 @@ export default {
   excludeFiles: [
     '.vscode/',
     '.git/',
-    'node_modules/',   // ← 如需离线,请注释掉此行,并参考下方->关于网络依赖与构建性能
+    'node_modules/',   // 如需离线,请注释掉此行,并参考下方“关于网络依赖与构建性能”
     'dist/',
     '*.log',
     './yarn.lock',
@@ -501,6 +498,7 @@ export default {
 - 由于安装包不包含依赖,用户首次启动应用时会自动执行 `npm install`（或 `npm ci`）安装生产依赖;
 - 此过程**需要联网**,并且依赖包数量越多,耗时越长;
 - 但只需这一次,依赖安装完成后,后续启动完全离线,且运行性能与本地安装无异;
+- 首次安装时会显示一个美观的进度窗口,实时输出安装日志,避免用户误以为应用卡死;
 
 ### 如何实现完全离线运行？
 
@@ -514,11 +512,15 @@ export default {
 
 ### 优化建议（兼顾速度与离线）
 
-如果您的应用需要 完全离线运行（即保留 node_modules 打包进安装包）,请在 excludeFiles 中排除那些 与 Electron 内置 Node.js 冲突的目录及与脚本运行无关的包，例如：
-1. node_modules/node/（某些原生模块安装时产生的 node 包）
-2. node_modules/node-win-*/、node_modules/node-darwin-*/ 等平台特定的二进制目录
-这些目录是编译原生模块时的中间产物，运行时会与 Electron 自带的 Node.js 冲突，且完全无用;
-#### 示例配置:
+如果您的应用需要完全离线运行（即保留 node_modules 打包进安装包）,请在 `excludeFiles` 中排除那些**与 Electron 内置 Node.js 冲突的目录**及与脚本运行无关的包,例如：
+- `node_modules/node/`（某些原生模块安装时产生的 node 包）
+- `node_modules/node-win-*/`、`node_modules/node-darwin-*/` 等平台特定的二进制目录
+
+这些目录是编译原生模块时的中间产物,运行时会与 Electron 自带的 Node.js 冲突,且完全无用;
+
+#### 示例配置（仅离线场景）：
+
+```javascript
 excludeFiles: [
   '.vscode/',
   '.git/',
@@ -536,15 +538,15 @@ excludeFiles: [
   'node_modules/**/__tests__/',
   'node_modules/**/example/',
   'node_modules/**/examples/',
-
-  // ... 其它node_modules/不需要的包和其它排除项
+  // ... 其它node_modules/的排除包和以外排除项
 ]
+```
 
 **最佳组合方案（推荐）：**
 
 - 构建前执行 `npm prune --production`（移除开发依赖）;
 - 保留 `node_modules`,但只包含生产依赖,体积和文件数大大减少;
-- 在 `package.json` 中设置 `scripts.prebuild` 和 `postbuild` 自动管理;
+- 在 `package.json` 中设置 `scripts.prebuild` 和 `postbuild` 自动管理：
 
 ```json
 {
@@ -583,7 +585,7 @@ excludeFiles: [
 ## 🛠️ 常见问题
 
 ### 1. 构建时提示 `desktopAppConfig.js not found`
-- 确认包已正确安装,`postinstall` 会自动复制模板;若未自动复制,可手动从 `node_modules/@flun/desktop-builder/desktopAppConfig.js` 复制到项目根目录;
+- 确认包已正确安装,`postinstall` 会自动复制模板；若未自动复制,可手动从 `node_modules/@flun/desktop-builder/desktopAppConfig.js` 复制到项目根目录;
 
 ### 2. 构建失败,提示 `electron-builder` 相关错误
 - 确保网络畅通,首次构建需下载 Electron 运行时（约 100MB）;
@@ -596,20 +598,22 @@ excludeFiles: [
 - 正常,Electron 包含完整 Chromium 内核;可通过 `build.compression: 'maximum'` 或 `build.asar: true`（但包内 `asar` 默认为 `false` 以兼容某些后端）进行优化;
 
 ### 5. 如何只生成当前平台的安装包？
-- 默认行为即为只生成当前平台;如需生成其他平台,请在对应操作系统上执行构建命令;
+- 默认行为即为只生成当前平台；如需生成其他平台,请在对应操作系统上执行构建命令;
 
 ### 6. 菜单中的 `__TOGGLE_BROWSER__` 有什么作用？
 - 该特殊标记会被替换为“在系统默认浏览器中打开应用地址”的功能,方便用户测试;
 
 ### 7. 为什么我设置了 `nodeIntegration: false`,但应用仍然能访问 Node.js？
 - 如上方“窗口配置”警告所述,本工具为了自动启动后端服务,**强制启用了 `nodeIntegration` 并关闭了 `contextIsolation` 和 `sandbox`**;
-  这是设计上的必要妥协,但确实降低了安全性;**请勿在应用中加载外部网页或不可信内容**;
+  这是设计上的必要妥协,但确实降低了安全性；**请勿在应用中加载外部网页或不可信内容**;
 
 ### 8. 构建后的应用必须联网才能使用吗？
 - **默认情况下**,首次启动需要联网安装依赖；之后可离线运行;
   若要完全离线,请在 `excludeFiles` 中保留 `node_modules`（注释掉排除规则）,并考虑使用 `npm prune --production` 精简依赖,以平衡构建速度和安装体验;
-- **Q: 首次启动时出现一个日志窗口,显示 npm 安装信息,是正常的吗？**
-A: 是的;当应用目录下没有 `node_modules` 时,应用会自动安装生产依赖,并显示实时进度窗口,让您了解安装进度;安装完成后窗口会自动切换为应用界面;后续启动因依赖已存在,不会再显示该窗口;
+
+### 9. 首次启动时出现一个日志窗口,显示 npm 安装信息,是正常的吗？
+- 是的;当应用目录下没有 `node_modules` 时,应用会自动安装生产依赖,并显示实时进度窗口,让您了解安装进度;安装完成后窗口会自动切换为应用界面;后续启动因依赖已存在,不会再显示该窗口;
+
 ---
 
 ## 📄 许可证

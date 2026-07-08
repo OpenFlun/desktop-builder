@@ -1,6 +1,6 @@
-import { runCLI, build } from './lib/build.js';
+import { runCLI, build } from './build.js';
 
-// =================================== lib/build.js ===================================
+// =================================== build.js ===================================
 /**
  * ```js
  * // 文件导出内容
@@ -9,8 +9,8 @@ import { runCLI, build } from './lib/build.js';
  * ```
  * >查看定义:@see {@link build}、{@link runCLI}
  */
-declare module './lib/build.js' {
-    export * from './lib/build.js';
+declare module './build.js' {
+    export * from './build.js';
 }
 
 // =================================== 模块导出入口 ===================================
@@ -28,5 +28,5 @@ declare module './lib/build.js' {
  *   await build();
  */
 declare module './index.js' {
-    export { build } from './lib/build.js';
+    export { build } from './build.js';
 }
