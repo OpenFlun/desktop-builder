@@ -24,7 +24,7 @@ const require = createRequire(import.meta.url),
   }, TARGET_URL = CONFIG.APP_URL,
   switches = ['no-sandbox', 'ignore-certificate-errors', 'allow-insecure-localhost'],
 
-  // 内嵌进度页面 HTML
+  // 安装进度页面
   PROGRESS_HTML = `
 <!DOCTYPE html>
 <html>
@@ -55,11 +55,26 @@ const require = createRequire(import.meta.url),
       height: 80vh;
     }
     .header {
-      padding: 24px 28px;
+      padding: 20px 28px 16px;
       background: #2c3e50;
       color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     .header h1 { font-weight: 500; font-size: 20px; letter-spacing: 0.3px; }
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 8px 28px;
+      background: #1f2a66;
+      border-bottom: 1px solid #302b2b;
+      font-size: 14px;
+      color: #d4d4d4;
+    }
+    #status-text { font-weight: 500; }
+    #timer { margin-left: auto; font-family: monospace; background: #110606; padding: 2px 10px; border-radius: 12px; }
     .log-area {
       flex: 1;
       padding: 16px 24px;
@@ -82,31 +97,85 @@ const require = createRequire(import.meta.url),
 <body>
 <div class="container">
   <div class="header"><h1>⏳ 正在准备环境</h1></div>
+  <div class="status-bar">
+    <span id="status-text">正在初始化…</span>
+    <span id="timer">已用时: 00:00</span>
+  </div>
   <div class="log-area" id="log"></div>
 </div>
 <script>
   const logEl = document.getElementById('log');
   function appendLog(message, type = 'info') {
-    const line = document.createElement('div');
-    const time = new Date().toLocaleTimeString();
-    const spanTime = document.createElement('span');
-    spanTime.className = 'timestamp';
-    spanTime.textContent = '[' + time + '] ';
+    const line = document.createElement('div'), time = new Date().toLocaleTimeString(),
+     spanTime = document.createElement('span');
+    spanTime.className = 'timestamp', spanTime.textContent = '[' + time + '] ';
     const spanMsg = document.createElement('span');
-    spanMsg.className = type;
-    spanMsg.textContent = message;
-    line.appendChild(spanTime);
-    line.appendChild(spanMsg);
-    logEl.appendChild(line);
-    logEl.scrollTop = logEl.scrollHeight;
+    spanMsg.className = type, spanMsg.textContent = message;
+    line.appendChild(spanTime), line.appendChild(spanMsg);
+    logEl.appendChild(line), logEl.scrollTop = logEl.scrollHeight;
   }
   window.appendLog = appendLog;
+
+  // ---- 计时器 ----
+  let timerInterval = null, seconds = 0;
+  function updateTimerDisplay(sec) {
+    const mins = Math.floor(sec / 60), secs = sec % 60;
+    document.getElementById('timer').textContent = '已用时: ' + String(mins).padStart(2,'0') + ':' + String(secs).padStart(2,'0');
+  }
+
+  function startTimer() {
+    seconds = 0, updateTimerDisplay(0);
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      seconds++, updateTimerDisplay(seconds);
+    }, 1000);
+  }
+
+  function stopTimer() {
+    if (timerInterval) clearInterval(timerInterval), timerInterval = null;
+  }
+
+  // ---- 静态文字（无省略号） ----
+  function setStatusText(text) {
+    if (window.ellipsisInterval) clearInterval(window.ellipsisInterval), window.ellipsisInterval = null;
+
+    document.getElementById('status-text').textContent = text;
+    if (text.includes('失败')) document.getElementById('status-text').style.color = '#e57373';
+     else document.getElementById('status-text').style.color = '#d4d4d4';
+  }
+
+  // ---- 动态省略号（统一动画） ----
+  let ellipsisInterval = null;
+
+  function startEllipsis(text) {
+    if (ellipsisInterval) clearInterval(ellipsisInterval), ellipsisInterval = null;
+
+    const statusEl = document.getElementById('status-text');
+    let dots = 0;
+    statusEl.textContent = text + ' ', statusEl.style.color = '#d4d4d4';
+    ellipsisInterval = setInterval(() => {
+      dots = (dots % 6) + 1, statusEl.textContent = text + ' ' + '.'.repeat(dots);
+    }, 500);
+  }
+
+  function stopEllipsis() {
+    if (ellipsisInterval) clearInterval(ellipsisInterval), ellipsisInterval = null;
+  }
+
+  window.startTimer = startTimer, window.stopTimer = stopTimer, window.setStatusText = setStatusText;
+  window.startEllipsis = startEllipsis, window.stopEllipsis = stopEllipsis;
 </script>
 </body>
 </html>
 `,
-
   // --------------------- 工具函数 ---------------------
+  safeExecuteJS = (win, code) => {
+    if (win && !win.isDestroyed()) win.webContents.executeJavaScript(code).catch(() => { });
+  },
+  startTimerInWin = (win) => safeExecuteJS(win, 'startTimer()'),
+  stopTimerInWin = (win) => safeExecuteJS(win, 'stopTimer()'),
+  startEllipsisInWin = (win, text) => safeExecuteJS(win, `startEllipsis(${JSON.stringify(text)})`),
+  setStatusTextInWin = (win, text) => safeExecuteJS(win, `setStatusText(${JSON.stringify(text)})`),
   writeLog = (filePath, msg) => {
     try { fs.appendFileSync(filePath, new Date().toISOString() + ' ' + msg + '\n'); } catch (_) { }
   },
@@ -130,8 +199,10 @@ const require = createRequire(import.meta.url),
     return false;
   },
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
-  // 依赖安装（带进度回调）
-  installDependenciesWithProgress = async (onProgress) => {
+  // 依赖安装
+  installDependenciesWithProgress = async (onProgress, win) => {
+    startTimerInWin(win);
+
     const nodeModulesPath = path.join(__dirname, 'node_modules');
     try {
       return await fs.promises.access(nodeModulesPath, fs.constants.F_OK), true;
@@ -142,7 +213,7 @@ const require = createRequire(import.meta.url),
     try {
       await fs.promises.access(depsPath, fs.constants.F_OK);
     } catch {
-      return onProgress('错误: deps.json 不存在,无法安装依赖', 'error'), false;
+      return onProgress('错误: deps.json 不存在,无法安装依赖', 'error'), stopTimerInWin(win), false;
     }
 
     let deps;
@@ -150,7 +221,7 @@ const require = createRequire(import.meta.url),
       const depsContent = await fs.promises.readFile(depsPath, 'utf-8');
       deps = JSON.parse(depsContent);
     } catch (err) {
-      return onProgress('读取 deps.json 失败: ' + err.message, 'error'), false;
+      return onProgress('读取 deps.json 失败: ' + err.message, 'error'), stopTimerInWin(win), false;
     }
 
     const pkgPath = path.join(__dirname, 'package.json');
@@ -159,14 +230,14 @@ const require = createRequire(import.meta.url),
       const pkgContent = await fs.promises.readFile(pkgPath, 'utf-8');
       pkg = JSON.parse(pkgContent);
     } catch (err) {
-      return onProgress('读取 package.json 失败: ' + err.message, 'error'), false;
+      return onProgress('读取 package.json 失败: ' + err.message, 'error'), stopTimerInWin(win), false;
     }
 
     pkg.dependencies = deps, pkg.devDependencies = {};
     try {
       await fs.promises.writeFile(pkgPath, JSON.stringify(pkg, null, 2), 'utf-8');
     } catch (err) {
-      return onProgress('写入 package.json 失败: ' + err.message, 'error'), false;
+      return onProgress('写入 package.json 失败: ' + err.message, 'error'), stopTimerInWin(win), false;
     }
 
     let cmd = 'install';
@@ -196,12 +267,12 @@ const require = createRequire(import.meta.url),
       });
 
       let timeoutId = setTimeout(() => {
-        proc.kill(), onProgress('安装超时（120秒）,终止进程;', 'error'), resolve(false);
+        proc.kill(), onProgress('安装超时（120秒）,终止进程;', 'error'), stopTimerInWin(win), resolve(false);
       }, 120000);
 
       proc.on('close', async (code) => {
         clearTimeout(timeoutId);
-        if (code !== 0) return onProgress(`npm 安装失败,退出码 ${code}`, 'error'), resolve(false);
+        if (code !== 0) return onProgress(`npm 安装失败,退出码 ${code}`, 'error'), stopTimerInWin(win), resolve(false);
 
         onProgress('npm 安装完成,正在清理...', 'info');
         try {
@@ -220,16 +291,15 @@ const require = createRequire(import.meta.url),
         }
 
         try {
-          await fs.promises.access(nodeModulesPath, fs.constants.F_OK);
-          onProgress('依赖安装成功！即将启动应用...', 'success'), resolve(true);
+          await fs.promises.access(nodeModulesPath, fs.constants.F_OK), resolve(true);
         } catch {
           onProgress('安装后 node_modules 仍然不存在', 'error'), resolve(false);
         }
+        finally { stopTimerInWin(win) }
       });
 
       proc.on('error', (err) => {
-        clearTimeout(timeoutId);
-        onProgress('启动 npm 进程失败: ' + err.message, 'error'), resolve(false);
+        clearTimeout(timeoutId), onProgress('启动npm进程失败:' + err.message, 'error'), stopTimerInWin(win), resolve(false);
       });
     });
   },
@@ -257,23 +327,23 @@ const require = createRequire(import.meta.url),
   waitForServer = (port, timeout = 30000) => {
     return new Promise((resolve) => {
       const start = Date.now(), protocol = new URL(CONFIG.APP_URL).protocol,
-        httpModule = protocol === 'https:' ? https : http;
-      const check = () => {
-        if (Date.now() - start > timeout) { log('服务器就绪超时'); resolve(false); return; }
-        const req = httpModule.get({
-          hostname: '127.0.0.1', port, path: '/',
-          rejectUnauthorized: false,
-          timeout: 5000, family: 4,
-        }, res => {
-          log('服务器响应 ' + res.statusCode), resolve(true), req.destroy();
-        });
-        req.on('error', err => {
-          log('服务器尚未就绪: ' + err.message), setTimeout(check, 2000);
-        });
-        req.on('timeout', () => {
-          req.destroy(), setTimeout(check, 2000);
-        });
-      };
+        httpModule = protocol === 'https:' ? https : http,
+        check = () => {
+          if (Date.now() - start > timeout) return log('服务器就绪超时'), resolve(false);
+          const req = httpModule.get({
+            hostname: '127.0.0.1', port, path: '/',
+            rejectUnauthorized: false,
+            timeout: 5000, family: 4,
+          }, res => {
+            log('服务器响应 ' + res.statusCode), resolve(true), req.destroy();
+          });
+          req.on('error', err => {
+            log('服务器尚未就绪: ' + err.message), setTimeout(check, 2000);
+          });
+          req.on('timeout', () => {
+            req.destroy(), setTimeout(check, 2000);
+          });
+        };
       check();
     });
   },
@@ -395,7 +465,7 @@ try {
   log(`已映射 ${hostname} 到 127.0.0.1`);
 } catch (_) { }
 
-if (!app.requestSingleInstanceLock()) { log('已有另一个实例在运行,退出'); app.quit(); }
+if (!app.requestSingleInstanceLock()) log('已有另一个实例在运行,退出'), app.quit();
 else app.on('second-instance', () => focusMainWindow());
 
 app.on('certificate-error', (e, wc, url, err, cert, cb) => { e.preventDefault(), cb(true); });
@@ -410,14 +480,14 @@ app.whenReady().then(async () => {
 
   if (depsExist) await startServer(), await createWindow(false);
   else {
-    const win = await createWindow(true),
-      updateProgress = (msg, type = 'info') => {
-        if (win && !win.isDestroyed())
-          win.webContents.executeJavaScript(`appendLog(${JSON.stringify(msg)}, ${JSON.stringify(type)})`).catch(() => { });
-      };
-    updateProgress('开始安装依赖...', 'info');
-    const depsOk = await installDependenciesWithProgress(updateProgress);
+    const win = await createWindow(true);
+    startEllipsisInWin(win, '正在安装依赖');
+
+    const updateProgress = (msg, type = 'info') => {
+      safeExecuteJS(win, `appendLog(${JSON.stringify(msg)}, ${JSON.stringify(type)})`);
+    }, depsOk = await installDependenciesWithProgress(updateProgress, win);
     if (!depsOk) updateProgress('依赖安装失败,应用可能无法正常运行;', 'error');
+    else startEllipsisInWin(win, '依赖安装成功！正在启动应用');
     await startServer(), await win.loadURL(TARGET_URL);
   }
 });

@@ -1,15 +1,13 @@
 # 变更日志
-## [2.0.2] - 2026-07-08 16:42
+## [2.0.3] - 2026-07-08 21:42
 ### 优化
-- 修改了build目录下的部分图标;
+- 优化了安装依赖包界面的交互细节;
 
 ## [2.0.1] - 2026-07-08 14:56
-
 ### 🐛 紧急修复
 - **修复 `electron-main.js` 模板路径错误**：`build.js` 中加载 `electron-main.js` 的路径从 `path.join(__dirname, '..', 'electron-main.js')` 修正为 `path.join(__dirname, 'electron-main.js')`，解决了因路径错误导致构建时找不到模板文件的问题（`ENOENT` 错误）。
 
 ## [2.0.0] - 2026-07-08 14:39
-
 ### ⚠️ 破坏性变更 (Breaking Changes)
 
 - **移除顶层 `branding` 配置**：不再支持 `branding.appIcon`、`branding.installerIcon`、`branding.uninstallerIcon`。
