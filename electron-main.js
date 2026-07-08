@@ -96,7 +96,7 @@ const require = createRequire(import.meta.url),
 </head>
 <body>
 <div class="container">
-  <div class="header"><h1>⏳ 正在准备环境</h1></div>
+  <div class="header"><h1>环境准备</h1></div>
   <div class="status-bar">
     <span id="status-text">正在初始化…</span>
     <span id="timer">已用时: 00:00</span>
@@ -116,7 +116,7 @@ const require = createRequire(import.meta.url),
   }
   window.appendLog = appendLog;
 
-  // ---- 计时器 ----
+  // 计时器
   let timerInterval = null, seconds = 0;
   function updateTimerDisplay(sec) {
     const mins = Math.floor(sec / 60), secs = sec % 60;
@@ -135,7 +135,7 @@ const require = createRequire(import.meta.url),
     if (timerInterval) clearInterval(timerInterval), timerInterval = null;
   }
 
-  // ---- 静态文字（无省略号） ----
+  // 静态文字（无省略号）
   function setStatusText(text) {
     if (window.ellipsisInterval) clearInterval(window.ellipsisInterval), window.ellipsisInterval = null;
 
@@ -144,7 +144,7 @@ const require = createRequire(import.meta.url),
      else document.getElementById('status-text').style.color = '#d4d4d4';
   }
 
-  // ---- 动态省略号（统一动画） ----
+  // 动态省略号（统一动画）
   let ellipsisInterval = null;
 
   function startEllipsis(text) {
