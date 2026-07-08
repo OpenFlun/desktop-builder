@@ -64,7 +64,7 @@ const build = async () => {
         dereference: true,
     });
 
-    const mainTemplatePath = path.join(__dirname, '..', 'electron-main.js'),
+    const mainTemplatePath = path.join(__dirname, 'electron-main.js'),
         mainTemplate = await fs.readFile(mainTemplatePath, 'utf-8');
 
     let menuCode = 'null';
