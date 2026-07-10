@@ -4,6 +4,7 @@ import { promisify } from 'util';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import dns from 'dns';
 import http from 'http';
 import https from 'https';
 import net from 'net';
@@ -23,8 +24,6 @@ const require = createRequire(import.meta.url),
     MENU_TEMPLATE: __MENU_TEMPLATE__,
   }, TARGET_URL = CONFIG.APP_URL,
   switches = ['no-sandbox', 'ignore-certificate-errors', 'allow-insecure-localhost'],
-
-  // 安装进度页面
   PROGRESS_HTML = `
 <!DOCTYPE html>
 <html>
@@ -138,7 +137,6 @@ const require = createRequire(import.meta.url),
   // 静态文字（无省略号）
   function setStatusText(text) {
     if (window.ellipsisInterval) clearInterval(window.ellipsisInterval), window.ellipsisInterval = null;
-
     document.getElementById('status-text').textContent = text;
     if (text.includes('失败')) document.getElementById('status-text').style.color = '#e57373';
      else document.getElementById('status-text').style.color = '#d4d4d4';
@@ -146,10 +144,8 @@ const require = createRequire(import.meta.url),
 
   // 动态省略号（统一动画）
   let ellipsisInterval = null;
-
   function startEllipsis(text) {
     if (ellipsisInterval) clearInterval(ellipsisInterval), ellipsisInterval = null;
-
     const statusEl = document.getElementById('status-text');
     let dots = 0;
     statusEl.textContent = text + ' ', statusEl.style.color = '#d4d4d4';
@@ -175,6 +171,7 @@ const require = createRequire(import.meta.url),
   startTimerInWin = (win) => safeExecuteJS(win, 'startTimer()'),
   stopTimerInWin = (win) => safeExecuteJS(win, 'stopTimer()'),
   startEllipsisInWin = (win, text) => safeExecuteJS(win, `startEllipsis(${JSON.stringify(text)})`),
+  stopEllipsisInWin = (win) => safeExecuteJS(win, 'stopEllipsis()'),
   setStatusTextInWin = (win, text) => safeExecuteJS(win, `setStatusText(${JSON.stringify(text)})`),
   writeLog = (filePath, msg) => {
     try { fs.appendFileSync(filePath, new Date().toISOString() + ' ' + msg + '\n'); } catch (_) { }
@@ -202,7 +199,6 @@ const require = createRequire(import.meta.url),
   // 依赖安装
   installDependenciesWithProgress = async (onProgress, win) => {
     startTimerInWin(win);
-
     const nodeModulesPath = path.join(__dirname, 'node_modules');
     try {
       return await fs.promises.access(nodeModulesPath, fs.constants.F_OK), true;
@@ -249,7 +245,7 @@ const require = createRequire(import.meta.url),
       onProgress('未找到 package-lock.json,使用 npm install', 'info');
     }
 
-    const args = [cmd, '--ignore-scripts', '--no-optional', '--force', '--no-audit', '--no-fund'],
+    const args = [cmd, '--no-optional', '--force', '--no-audit', '--no-fund'],
       env = { ...process.env, npm_config_ignore_scripts: 'true', npm_config_optional: 'false' };
 
     onProgress(`执行 npm ${args.join(' ')} ...`, 'info');
@@ -273,7 +269,6 @@ const require = createRequire(import.meta.url),
       proc.on('close', async (code) => {
         clearTimeout(timeoutId);
         if (code !== 0) return onProgress(`npm 安装失败,退出码 ${code}`, 'error'), stopTimerInWin(win), resolve(false);
-
         onProgress('npm 安装完成,正在清理...', 'info');
         try {
           const entries = await fs.promises.readdir(nodeModulesPath, { withFileTypes: true }), toDelete = [];
@@ -293,13 +288,13 @@ const require = createRequire(import.meta.url),
         try {
           await fs.promises.access(nodeModulesPath, fs.constants.F_OK), resolve(true);
         } catch {
-          onProgress('安装后 node_modules 仍然不存在', 'error'), resolve(false);
+          onProgress('安装后 node_modules 仍然不存在', 'error'), stopTimerInWin(win), resolve(false);
         }
-        finally { stopTimerInWin(win) }
       });
 
       proc.on('error', (err) => {
-        clearTimeout(timeoutId), onProgress('启动npm进程失败:' + err.message, 'error'), stopTimerInWin(win), resolve(false);
+        clearTimeout(timeoutId);
+        onProgress('启动npm进程失败:' + err.message, 'error'), stopTimerInWin(win), resolve(false);
       });
     });
   },
@@ -324,26 +319,36 @@ const require = createRequire(import.meta.url),
       server.listen(port, '127.0.0.1');
     });
   },
-  waitForServer = (port, timeout = 30000) => {
-    return new Promise((resolve) => {
-      const start = Date.now(), protocol = new URL(CONFIG.APP_URL).protocol,
-        httpModule = protocol === 'https:' ? https : http,
-        check = () => {
-          if (Date.now() - start > timeout) return log('服务器就绪超时'), resolve(false);
-          const req = httpModule.get({
-            hostname: '127.0.0.1', port, path: '/',
-            rejectUnauthorized: false,
-            timeout: 5000, family: 4,
-          }, res => {
-            log('服务器响应 ' + res.statusCode), resolve(true), req.destroy();
-          });
-          req.on('error', err => {
-            log('服务器尚未就绪: ' + err.message), setTimeout(check, 2000);
-          });
-          req.on('timeout', () => {
-            req.destroy(), setTimeout(check, 2000);
-          });
-        };
+  waitForServer = async (port, timeout = 30000) => {
+    const start = Date.now(), url = new URL(CONFIG.APP_URL), hostname = url.hostname, protocol = url.protocol,
+      httpModule = protocol === 'https:' ? https : http;
+
+    let ip = '127.0.0.1';
+    try {
+      const { address } = await dns.promises.lookup(hostname);
+      ip = address;
+    } catch (err) {
+      log(`解析 ${hostname} 失败: ${err.message}, 使用 127.0.0.1 兜底`);
+    }
+
+    return new Promise(resolve => {
+      const check = () => {
+        if (Date.now() - start > timeout) return log('服务器就绪超时'), resolve(false);
+        const req = httpModule.get({
+          hostname: ip, port: port, path: '/',
+          rejectUnauthorized: false, timeout: 5000, family: 4
+        }, res => {
+          resolve(true), req.destroy();
+        });
+
+        req.on('error', (err) => {
+          log('服务器尚未就绪: ' + err.message), setTimeout(check, 2000);
+        });
+
+        req.on('timeout', () => {
+          req.destroy(), setTimeout(check, 2000);
+        });
+      };
       check();
     });
   },
@@ -354,17 +359,21 @@ const require = createRequire(import.meta.url),
       log('打开浏览器失败: ' + e.message);
     }
   },
-  startServer = async () => {
-    if (!CONFIG.AUTO_START_SERVER) return;
+  startServer = async (onProgress) => {
+    if (!CONFIG.AUTO_START_SERVER) return true;
     const serverPath = path.join(__dirname, CONFIG.SERVER_PATH);
-    if (!fs.existsSync(serverPath)) return log('服务器文件不存在: ' + serverPath);
+    if (!fs.existsSync(serverPath)) {
+      if (onProgress) onProgress('服务器文件不存在: ' + serverPath, 'error');
+      return false;
+    }
 
     let port = 7296;
     try { port = parseInt(new URL(CONFIG.APP_URL).port) || 7296 } catch (_) { }
-
     for (let attempt = 1; attempt <= 3; attempt++) {
+      if (onProgress) onProgress(`正在清理端口 ${port}（尝试 ${attempt}/3）...`, 'info');
       await ensurePortFree(port);
 
+      if (onProgress) onProgress(`正在启动服务器进程...`, 'info');
       const env = { ...process.env, NODE_PATH: path.join(__dirname, 'node_modules') };
       serverProcess = spawn('node', [serverPath], { cwd: __dirname, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env });
       serverProcess.stdout.on('data', d => log('服务器 stdout: ' + d.toString().trim()));
@@ -372,11 +381,18 @@ const require = createRequire(import.meta.url),
       serverProcess.on('error', err => log('服务器进程错误: ' + err.message));
       serverProcess.unref();
 
+      if (onProgress) onProgress(`等待服务器就绪（端口 ${port}）...`, 'info');
       const ready = await waitForServer(port, 30000);
-      if (ready) return;
+      if (ready) {
+        if (onProgress) onProgress('服务器已就绪 ✓', 'success');
+        return true;
+      }
+
       log(`服务器未就绪 (尝试 ${attempt}/3),重试...`), killServerProcess(), await sleep(2000);
     }
-    log('服务器启动失败,尝试重新加载窗口');
+
+    if (onProgress) onProgress('❌ 服务器启动失败:多次尝试未响应', 'error');
+    return false;
   },
   // 窗口创建
   createWindow = async (loadProgress = false) => {
@@ -411,7 +427,7 @@ const require = createRequire(import.meta.url),
           mainWindow.webContents.on('did-fail-load', (e, code, desc, url) => {
             if (code === -102 && loadRetryCount < 3) {
               loadRetryCount++;
-              setTimeout(() => { if (mainWindow) mainWindow.loadURL(TARGET_URL).catch(() => { }); }, 2000);
+              setTimeout(() => { if (mainWindow) mainWindow.loadURL(TARGET_URL).catch(() => { }) }, 2000);
               return;
             }
             if (!mainWindow.isDestroyed())
@@ -455,14 +471,12 @@ globalThis.require = require;
 switches.forEach(s => app.commandLine.appendSwitch(s));
 try {
   const hostname = new URL(TARGET_URL).hostname;
-  app.commandLine.appendSwitch('host-resolver-rules', `MAP ${hostname} 127.0.0.1`);
   app.commandLine.appendSwitch('enable-features',
     'WebAuthentication,WebAuthn,WebAuthenticationHidSupport,WebAuthenticationWindowsApi,WebAuthenticationAndroidAccessory');
   app.commandLine.appendSwitch('disable-features', 'UseDnsHttpsSvcb,BlockInsecurePrivateNetworkRequests');
   app.commandLine.appendSwitch('enable-experimental-web-platform-features');
   app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
   app.commandLine.appendSwitch('vmodule', 'webauthn*=3');
-  log(`已映射 ${hostname} 到 127.0.0.1`);
 } catch (_) { }
 
 if (!app.requestSingleInstanceLock()) log('已有另一个实例在运行,退出'), app.quit();
@@ -483,12 +497,21 @@ app.whenReady().then(async () => {
     const win = await createWindow(true);
     startEllipsisInWin(win, '正在安装依赖');
 
-    const updateProgress = (msg, type = 'info') => {
-      safeExecuteJS(win, `appendLog(${JSON.stringify(msg)}, ${JSON.stringify(type)})`);
-    }, depsOk = await installDependenciesWithProgress(updateProgress, win);
-    if (!depsOk) updateProgress('依赖安装失败,应用可能无法正常运行;', 'error');
-    else startEllipsisInWin(win, '依赖安装成功！正在启动应用');
-    await startServer(), await win.loadURL(TARGET_URL);
+    const updateProgress = (msg, type = 'info') =>
+      safeExecuteJS(win, `appendLog(${JSON.stringify(msg)}, ${JSON.stringify(type)})`),
+      depsOk = await installDependenciesWithProgress(updateProgress, win);
+    if (!depsOk) {
+      updateProgress('依赖安装失败,应用可能无法正常运行', 'error'), stopEllipsisInWin(win);
+      return setStatusTextInWin(win, '依赖安装失败');
+    }
+
+    startEllipsisInWin(win, '依赖安装成功,正在启动服务器');
+    const serverOk = await startServer(updateProgress);
+    if (!serverOk) {
+      stopTimerInWin(win), stopEllipsisInWin(win), setStatusTextInWin(win, '🚫 服务器启动失败');
+      return updateProgress('❌ 服务器启动失败,请退出并检查日志', 'error');
+    }
+    await win.loadURL(TARGET_URL);
   }
 });
 
