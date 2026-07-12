@@ -11,7 +11,8 @@ import net from 'net';
 import { createRequire } from 'module';
 
 // --------------------- 全局变量 ---------------------
-let mainWindow = null, serverProcess = null, windowCreationPromise = null, loadRetryCount = 0;
+let mainWindow = null, serverProcess = null, windowCreationPromise = null, loadRetryCount = 0, focusRestoreTimer = null,
+  focusRestoreCooldown = false, windowHadFocus = false;
 const require = createRequire(import.meta.url),
   __dirname = path.dirname(fileURLToPath(import.meta.url)), execPromise = promisify(exec),
   CONFIG = {
@@ -25,153 +26,152 @@ const require = createRequire(import.meta.url),
   }, TARGET_URL = CONFIG.APP_URL,
   switches = ['no-sandbox', 'ignore-certificate-errors', 'allow-insecure-localhost'],
   PROGRESS_HTML = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>正在安装依赖...</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #2b49a1;
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      padding: 20px;
-    }
-    .container {
-      max-width: 800px;
-      width: 100%;
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.12);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      height: 80vh;
-    }
-    .header {
-      padding: 20px 28px 16px;
-      background: #2c3e50;
-      color: white;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .header h1 { font-weight: 500; font-size: 20px; letter-spacing: 0.3px; }
-    .status-bar {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 8px 28px;
-      background: #1f2a66;
-      border-bottom: 1px solid #302b2b;
-      font-size: 14px;
-      color: #d4d4d4;
-    }
-    #status-text { font-weight: 500; }
-    #timer { margin-left: auto; font-family: monospace; background: #110606; padding: 2px 10px; border-radius: 12px; }
-    .log-area {
-      flex: 1;
-      padding: 16px 24px;
-      overflow-y: auto;
-      background: #1e1e1e;
-      color: #d4d4d4;
-      font-family: 'Cascadia Code', 'Fira Code', monospace;
-      font-size: 13px;
-      line-height: 1.6;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-    .log-area .timestamp { color: #888; margin-right: 8px; }
-    .log-area .info { color: #4fc3f7; }
-    .log-area .success { color: #81c784; }
-    .log-area .error { color: #e57373; }
-    .log-area .warn { color: #ffb74d; }
-  </style>
-</head>
-<body>
-<div class="container">
-  <div class="header"><h1>环境准备</h1></div>
-  <div class="status-bar">
-    <span id="status-text">正在初始化…</span>
-    <span id="timer">已用时: 00:00</span>
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8">
+    <title>正在安装依赖...</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        background: #2b49a1;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        padding: 20px;
+      }
+      .container {
+        max-width: 800px;
+        width: 100%;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        height: 80vh;
+      }
+      .header {
+        padding: 20px 28px 16px;
+        background: #2c3e50;
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .header h1 { font-weight: 500; font-size: 20px; letter-spacing: 0.3px; }
+      .status-bar {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 8px 28px;
+        background: #1f2a66;
+        border-bottom: 1px solid #302b2b;
+        font-size: 14px;
+        color: #d4d4d4;
+      }
+      #status-text { font-weight: 500; }
+      #timer { margin-left: auto; font-family: monospace; background: #110606; padding: 2px 10px; border-radius: 12px; }
+      .log-area {
+        flex: 1;
+        padding: 16px 24px;
+        overflow-y: auto;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Cascadia Code', 'Fira Code', monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .log-area .timestamp { color: #888; margin-right: 8px; }
+      .log-area .info { color: #4fc3f7; }
+      .log-area .success { color: #81c784; }
+      .log-area .error { color: #e57373; }
+      .log-area .warn { color: #ffb74d; }
+    </style>
+  </head>
+  <body>
+  <div class="container">
+    <div class="header"><h1>首次启动环境准备</h1></div>
+    <div class="status-bar">
+      <span id="status-text">正在初始化…</span>
+      <span id="timer">已用时: 00:00</span>
+    </div>
+    <div class="log-area" id="log"></div>
   </div>
-  <div class="log-area" id="log"></div>
-</div>
-<script>
-  const logEl = document.getElementById('log');
-  function appendLog(message, type = 'info') {
-    const line = document.createElement('div'), time = new Date().toLocaleTimeString(),
-     spanTime = document.createElement('span');
-    spanTime.className = 'timestamp', spanTime.textContent = '[' + time + '] ';
-    const spanMsg = document.createElement('span');
-    spanMsg.className = type, spanMsg.textContent = message;
-    line.appendChild(spanTime), line.appendChild(spanMsg);
-    logEl.appendChild(line), logEl.scrollTop = logEl.scrollHeight;
-  }
-  window.appendLog = appendLog;
+  <script>
+    const logEl = document.getElementById('log');
+    function appendLog(message, type = 'info') {
+      const line = document.createElement('div'), time = new Date().toLocaleTimeString(),
+       spanTime = document.createElement('span');
+      spanTime.className = 'timestamp', spanTime.textContent = '[' + time + '] ';
+      const spanMsg = document.createElement('span');
+      spanMsg.className = type, spanMsg.textContent = message;
+      line.appendChild(spanTime), line.appendChild(spanMsg);
+      logEl.appendChild(line), logEl.scrollTop = logEl.scrollHeight;
+    }
+    window.appendLog = appendLog;
 
-  // 计时器
-  let timerInterval = null, seconds = 0;
-  function updateTimerDisplay(sec) {
-    const mins = Math.floor(sec / 60), secs = sec % 60;
-    document.getElementById('timer').textContent = '已用时: ' + String(mins).padStart(2,'0') + ':' + String(secs).padStart(2,'0');
-  }
+    // 计时器
+    let timerInterval = null, seconds = 0;
+    function updateTimerDisplay(sec) {
+      const mins = Math.floor(sec / 60), secs = sec % 60;
+      document.getElementById('timer').textContent = '已用时: ' + String(mins).padStart(2,'0') + ':' + String(secs).padStart(2,'0');
+    }
 
-  function startTimer() {
-    seconds = 0, updateTimerDisplay(0);
-    if (timerInterval) clearInterval(timerInterval);
-    timerInterval = setInterval(() => {
-      seconds++, updateTimerDisplay(seconds);
-    }, 1000);
-  }
+    function startTimer() {
+      seconds = 0, updateTimerDisplay(0);
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        seconds++, updateTimerDisplay(seconds);
+      }, 1000);
+    }
 
-  function stopTimer() {
-    if (timerInterval) clearInterval(timerInterval), timerInterval = null;
-  }
+    function stopTimer() {
+      if (timerInterval) clearInterval(timerInterval), timerInterval = null;
+    }
 
-  // 静态文字（无省略号）
-  function setStatusText(text) {
-    if (window.ellipsisInterval) clearInterval(window.ellipsisInterval), window.ellipsisInterval = null;
-    document.getElementById('status-text').textContent = text;
-    if (text.includes('失败')) document.getElementById('status-text').style.color = '#e57373';
-     else document.getElementById('status-text').style.color = '#d4d4d4';
-  }
+    // 静态文字（无省略号）
+    function setStatusText(text) {
+      if (window.ellipsisInterval) clearInterval(window.ellipsisInterval), window.ellipsisInterval = null;
+      document.getElementById('status-text').textContent = text;
+      if (text.includes('失败')) document.getElementById('status-text').style.color = '#e57373';
+       else document.getElementById('status-text').style.color = '#d4d4d4';
+    }
 
-  // 动态省略号（统一动画）
-  let ellipsisInterval = null;
-  function startEllipsis(text) {
-    if (ellipsisInterval) clearInterval(ellipsisInterval), ellipsisInterval = null;
-    const statusEl = document.getElementById('status-text');
-    let dots = 0;
-    statusEl.textContent = text + ' ', statusEl.style.color = '#d4d4d4';
-    ellipsisInterval = setInterval(() => {
-      dots = (dots % 6) + 1, statusEl.textContent = text + ' ' + '.'.repeat(dots);
-    }, 500);
-  }
+    // 动态省略号（统一动画）
+    let ellipsisInterval = null;
+    function startEllipsis(text) {
+      if (ellipsisInterval) clearInterval(ellipsisInterval), ellipsisInterval = null;
+      const statusEl = document.getElementById('status-text');
+      let dots = 0;
+      statusEl.textContent = text + ' ', statusEl.style.color = '#d4d4d4';
+      ellipsisInterval = setInterval(() => {
+        dots = (dots % 6) + 1, statusEl.textContent = text + ' ' + '.'.repeat(dots);
+      }, 500);
+    }
 
-  function stopEllipsis() {
-    if (ellipsisInterval) clearInterval(ellipsisInterval), ellipsisInterval = null;
-  }
+    function stopEllipsis() {
+      if (ellipsisInterval) clearInterval(ellipsisInterval), ellipsisInterval = null;
+    }
 
-  window.startTimer = startTimer, window.stopTimer = stopTimer, window.setStatusText = setStatusText;
-  window.startEllipsis = startEllipsis, window.stopEllipsis = stopEllipsis;
-</script>
-</body>
-</html>
-`,
+    window.startTimer = startTimer, window.stopTimer = stopTimer, window.setStatusText = setStatusText;
+    window.startEllipsis = startEllipsis, window.stopEllipsis = stopEllipsis;
+  </script>
+  </body>
+  </html>`,
   // --------------------- 工具函数 ---------------------
   safeExecuteJS = (win, code) => {
     if (win && !win.isDestroyed()) win.webContents.executeJavaScript(code).catch(() => { });
   },
-  startTimerInWin = (win) => safeExecuteJS(win, 'startTimer()'),
-  stopTimerInWin = (win) => safeExecuteJS(win, 'stopTimer()'),
+  startTimerInWin = win => safeExecuteJS(win, 'startTimer()'),
+  stopTimerInWin = win => safeExecuteJS(win, 'stopTimer()'),
   startEllipsisInWin = (win, text) => safeExecuteJS(win, `startEllipsis(${JSON.stringify(text)})`),
-  stopEllipsisInWin = (win) => safeExecuteJS(win, 'stopEllipsis()'),
+  stopEllipsisInWin = win => safeExecuteJS(win, 'stopEllipsis()'),
   setStatusTextInWin = (win, text) => safeExecuteJS(win, `setStatusText(${JSON.stringify(text)})`),
   writeLog = (filePath, msg) => {
     try { fs.appendFileSync(filePath, new Date().toISOString() + ' ' + msg + '\n'); } catch (_) { }
@@ -179,6 +179,55 @@ const require = createRequire(import.meta.url),
   log = msg => {
     if (!CONFIG.LOGGING_ENABLED) return;
     writeLog(path.join(app.getPath('desktop'), 'myapp_debug.log'), msg);
+  },
+  // 执行焦点检查
+  checkInputFocused = win => {
+    if (!win || win.isDestroyed()) return Promise.resolve(false);
+    return win.webContents.executeJavaScript(
+      `(function() {
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable))
+          return true;
+        return false;
+      })();`).catch(() => false);
+  },
+  // 精准焦点恢复（执行失焦+聚焦+重置标记并进入冷却）
+  performFocusRestore = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (!mainWindow.isVisible() || mainWindow.isMinimized()) return;
+    if (focusRestoreCooldown) return;
+
+    checkInputFocused(mainWindow).then(alreadyFocused => {
+      if (alreadyFocused) return windowHadFocus = false;
+      mainWindow.blur();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus(), mainWindow.webContents.focus();
+      windowHadFocus = false, focusRestoreCooldown = true, setTimeout(() => focusRestoreCooldown = false, 1000);
+    }).catch(() => windowHadFocus = false);
+  },
+  startFocusRestore = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.on('blur', () => windowHadFocus = true);
+    // 窗口聚焦时,仅当从失焦状态恢复且未冷却时才执行恢复
+    mainWindow.on('focus', () => {
+      if (windowHadFocus && !focusRestoreCooldown) {
+        if (focusRestoreTimer) clearTimeout(focusRestoreTimer);
+        focusRestoreTimer = setTimeout(() => {
+          focusRestoreTimer = null, performFocusRestore();
+        }, 150);
+      }
+    });
+    // 首次显示后,若窗口已聚焦,标记为曾聚焦
+    mainWindow.once('ready-to-show', () => {
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) windowHadFocus = true;
+    });
+  },
+  stopFocusRestore = () => {
+    if (focusRestoreTimer) clearTimeout(focusRestoreTimer), focusRestoreTimer = null;
+    focusRestoreCooldown = false;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.removeAllListeners('blur'), mainWindow.removeAllListeners('focus');
+      mainWindow.removeAllListeners('ready-to-show');
+    }
   },
   killServerProcess = () => {
     if (!serverProcess) return;
@@ -249,7 +298,7 @@ const require = createRequire(import.meta.url),
       env = { ...process.env, npm_config_ignore_scripts: 'true', npm_config_optional: 'false' };
 
     onProgress(`执行 npm ${args.join(' ')} ...`, 'info');
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       const proc = spawn('npm', args, { cwd: __dirname, env, shell: true });
 
       proc.stdout.on('data', data => {
@@ -266,7 +315,7 @@ const require = createRequire(import.meta.url),
         proc.kill(), onProgress('安装超时（120秒）,终止进程;', 'error'), stopTimerInWin(win), resolve(false);
       }, 120000);
 
-      proc.on('close', async (code) => {
+      proc.on('close', async code => {
         clearTimeout(timeoutId);
         if (code !== 0) return onProgress(`npm 安装失败,退出码 ${code}`, 'error'), stopTimerInWin(win), resolve(false);
         onProgress('npm 安装完成,正在清理...', 'info');
@@ -292,16 +341,15 @@ const require = createRequire(import.meta.url),
         }
       });
 
-      proc.on('error', (err) => {
-        clearTimeout(timeoutId);
-        onProgress('启动npm进程失败:' + err.message, 'error'), stopTimerInWin(win), resolve(false);
+      proc.on('error', err => {
+        clearTimeout(timeoutId), onProgress('启动npm进程失败:' + err.message, 'error'), stopTimerInWin(win), resolve(false);
       });
     });
   },
   ensurePortFree = port => {
     return new Promise((resolve) => {
       const server = net.createServer();
-      server.once('error', (err) => {
+      server.once('error', err => {
         if (err.code === 'EADDRINUSE') {
           const cmd = process.platform === 'win32' ? `netstat -ano | findstr :${port}` : `lsof -i :${port} -t`;
           exec(cmd, (err, stdout) => {
@@ -355,11 +403,9 @@ const require = createRequire(import.meta.url),
   openInBrowser = () => {
     try {
       shell.openExternal(CONFIG.APP_URL);
-    } catch (e) {
-      log('打开浏览器失败: ' + e.message);
-    }
+    } catch (e) { log('打开浏览器失败: ' + e.message) }
   },
-  startServer = async (onProgress) => {
+  startServer = async onProgress => {
     if (!CONFIG.AUTO_START_SERVER) return true;
     const serverPath = path.join(__dirname, CONFIG.SERVER_PATH);
     if (!fs.existsSync(serverPath)) {
@@ -387,7 +433,6 @@ const require = createRequire(import.meta.url),
         if (onProgress) onProgress('服务器已就绪 ✓', 'success');
         return true;
       }
-
       log(`服务器未就绪 (尝试 ${attempt}/3),重试...`), killServerProcess(), await sleep(2000);
     }
 
@@ -451,7 +496,7 @@ const require = createRequire(import.meta.url),
     if (!template || template.length === 0) return;
 
     // 递归处理菜单项：__TOGGLE_BROWSER__ 和字符串函数
-    const processMenu = (items) => {
+    const processMenu = items => {
       return items.map(item => {
         const newItem = { ...item };
         if (newItem.submenu) newItem.submenu = processMenu(newItem.submenu);
@@ -485,7 +530,6 @@ else app.on('second-instance', () => focusMainWindow());
 app.on('certificate-error', (e, wc, url, err, cert, cb) => { e.preventDefault(), cb(true); });
 app.whenReady().then(async () => {
   setupMenu();
-
   const nodeModulesPath = path.join(__dirname, 'node_modules');
   let depsExist = false;
   try {
@@ -513,12 +557,13 @@ app.whenReady().then(async () => {
     }
     await win.loadURL(TARGET_URL);
   }
+  startFocusRestore();
 });
 
 app.on('window-all-closed', () => {
   log('所有窗口已关闭');
   if (CONFIG.AUTO_KILL_SERVER) killServerProcess();
-  app.quit();
+  stopFocusRestore(), app.quit();
 });
 
 app.on('activate', () => {
@@ -526,8 +571,10 @@ app.on('activate', () => {
   else if (mainWindow) mainWindow.focus();
 });
 
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', err => {
   const msg = '未捕获异常: ' + err.message + '\n' + err.stack;
   log(msg), app.quit();
 });
-app.on('will-quit', () => killServerProcess());
+app.on('will-quit', () => {
+  killServerProcess(), stopFocusRestore();
+});
