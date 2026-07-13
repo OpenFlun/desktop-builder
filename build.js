@@ -208,10 +208,11 @@ const build = async () => {
 
     if (!success) console.error(chalk.red('[错误] 构建失败,已尝试 2 次:'), lastError), process.exit(1);
     // 复制安装包到输出目录
-    const tempDistDir = path.join(tempDir, 'dist'), targetDir = path.resolve(process.cwd(), configObj.directories.output);
-    if (await fs.pathExists(tempDistDir)) {
+    const outputDir = configObj.directories.output, tDir = path.join(tempDir, outputDir),
+        targetDir = path.resolve(process.cwd(), outputDir);
+    if (await fs.pathExists(tDir)) {
         await fs.ensureDir(targetDir);
-        const files = await fs.readdir(tempDistDir);
+        const files = await fs.readdir(tDir);
         let copiedCount = 0;
         for (const file of files) {
             let shouldExclude = false;
@@ -224,7 +225,7 @@ const build = async () => {
             if (shouldExclude) continue;
             const INSTALLER_EXTENSIONS = ['.exe', '.msi', '.dmg', '.AppImage', '.deb', '.rpm', '.pkg', '.zip'];
             if (INSTALLER_EXTENSIONS.some(ext => file.endsWith(ext))) {
-                const src = path.join(tempDistDir, file), dest = path.join(targetDir, file);
+                const src = path.join(tDir, file), dest = path.join(targetDir, file);
                 await fs.copy(src, dest), copiedCount++;
             }
         }
