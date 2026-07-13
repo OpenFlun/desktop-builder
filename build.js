@@ -35,7 +35,6 @@ const build = async () => {
 
     const projectRoot = path.resolve(process.cwd());
     console.log(chalk.blue('[信息] 正在复制项目文件从 ' + projectRoot + ' 到 ' + tempDir));
-
     await fs.copy(projectRoot, tempDir, {
         filter: (src) => {
             const relative = path.relative(projectRoot, src);
@@ -64,9 +63,7 @@ const build = async () => {
         dereference: true,
     });
 
-    const mainTemplatePath = path.join(__dirname, 'electron-main.js'),
-        mainTemplate = await fs.readFile(mainTemplatePath, 'utf-8');
-
+    const mainFilePath = path.join(__dirname, 'electron-main.js'), mainTem = await fs.readFile(mainFilePath, 'utf-8');
     let menuCode = 'null';
     if (config.menu && Array.isArray(config.menu) && config.menu.length > 0) {
         menuCode = JSON.stringify(config.menu, (key, value) => {
@@ -92,7 +89,7 @@ const build = async () => {
     },
         advanced = { autoStartServer: true, autoKillServer: true, ...(config.advanced || {}) },
         serverRelPath = path.basename(config.serverPath),
-        mainJs = mainTemplate
+        mainJs = mainTem
             .replace('__APP_URL__', JSON.stringify(config.appUrl))
             .replace('__WINDOW_CONFIG__', JSON.stringify(windowConfig))
             .replace('__SERVER_PATH__', JSON.stringify(serverRelPath))
@@ -122,9 +119,8 @@ const build = async () => {
     // 继续构建配置
     let electronVersion;
     try {
-        const electronPkgPath = require.resolve('electron/package.json'),
-            electronPkg = await fs.readJson(electronPkgPath);
-        electronVersion = electronPkg.version, console.log(chalk.blue('[信息] Electron 版本: ' + electronVersion));
+        const ePkgPath = require.resolve('electron/package.json'), ePkg = await fs.readJson(ePkgPath);
+        electronVersion = ePkg.version, console.log(chalk.blue('[信息] Electron 版本: ' + electronVersion));
     } catch (err) {
         console.error(chalk.red('[错误] 未找到 electron 包,请先安装;')), process.exit(1);
     }
@@ -147,10 +143,7 @@ const build = async () => {
         }, defaultDmg = { iconSize: 80, window: { width: 540, height: 380 } },
         // 构建 configObj
         configObj = {
-            files: [
-                '!build/**/*', '!builder.json',
-                '!icon.png', '!installerIcon.ico', '!uninstallerIcon.ico',
-            ],
+            files: ['!build/**/*', '!builder.json', '!icon.png', '!installerIcon.ico', '!uninstallerIcon.ico'],
             appId: buildConfig.appId || 'com.example.app',
             productName: config.appName,
             directories: { output: buildConfig.outputDir || './dist' },
@@ -168,18 +161,25 @@ const build = async () => {
     const platformKey = currentPlatform;
     if (!configObj[platformKey]) configObj[platformKey] = { target: DEFAULT_TARGETS[platformKey] };
     else if (!configObj[platformKey].target) configObj[platformKey].target = DEFAULT_TARGETS[platformKey];
+    // 卸载处理
+    if (!configObj.nsis.deleteAppDataOnUninstall ?? false) {
+        const uninstallNshContent = `
+            !macro customUninstall
+                SetOutPath $TEMP
+            !macroend`, nshPath = path.join(tempDir, 'uninstall.nsh');
+        await fs.writeFile(nshPath, uninstallNshContent);
+        configObj.nsis = { ...configObj.nsis, include: './uninstall.nsh' };
+    }
 
     const configFile = path.join(tempDir, 'builder.json');
     await fs.writeJson(configFile, configObj, { spaces: 2 });
-
     // 执行 electron-builder
     const args = [
-        '--no-install', 'electron-builder', '--project',
-        tempDir, '--config', configFile, platformArg
+        '--no-install', 'electron-builder', '--project', tempDir, '--config', configFile, platformArg
     ];
     console.log(chalk.blue('[信息] 正在执行构建: npx ' + args.join(' ')));
 
-    let retries = 3, lastError = null, success = false;
+    let retries = 2, lastError = null, success = false;
     while (retries > 0) {
         try {
             await execa('npx', args, {
@@ -206,11 +206,9 @@ const build = async () => {
         }
     }
 
-    if (!success) console.error(chalk.red('[错误] 构建失败,已尝试 3 次:'), lastError), process.exit(1);
+    if (!success) console.error(chalk.red('[错误] 构建失败,已尝试 2 次:'), lastError), process.exit(1);
     // 复制安装包到输出目录
-    const tempDistDir = path.join(tempDir, 'dist'), userOutputDir = buildConfig.outputDir || './dist',
-        targetDir = path.resolve(process.cwd(), userOutputDir);
-
+    const tempDistDir = path.join(tempDir, 'dist'), targetDir = path.resolve(process.cwd(), configObj.directories.output);
     if (await fs.pathExists(tempDistDir)) {
         await fs.ensureDir(targetDir);
         const files = await fs.readdir(tempDistDir);
@@ -224,7 +222,7 @@ const build = async () => {
                 }
             }
             if (shouldExclude) continue;
-            const INSTALLER_EXTENSIONS = ['.exe', '.dmg', '.AppImage', '.deb', '.rpm', '.pkg', '.zip'];
+            const INSTALLER_EXTENSIONS = ['.exe', '.msi', '.dmg', '.AppImage', '.deb', '.rpm', '.pkg', '.zip'];
             if (INSTALLER_EXTENSIONS.some(ext => file.endsWith(ext))) {
                 const src = path.join(tempDistDir, file), dest = path.join(targetDir, file);
                 await fs.copy(src, dest), copiedCount++;

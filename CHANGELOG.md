@@ -1,4 +1,14 @@
 # 变更日志
+## [2.1.2] - 2026-07-13 21:50
+### 🐛 修复
+- 修复卸载时当 `deleteAppDataOnUninstall` 为 `false` 时，没有实际卸载安装目录的问题;
+
+### 🛠️ 优化
+- **增加 `.msi` 安装包支持**：在复制安装包时，将 `.msi` 纳入可识别的安装包扩展名列表，完善 Windows 平台构建的兼容性。
+- **构建重试次数调整**：将构建失败重试次数从 3 次减至 2 次，减少无效等待，提升反馈速度。
+- **简化输出目录路径解析**：直接使用 `configObj.directories.output` 获取输出目录，移除冗余变量，代码更清晰一致。
+- 对部分变量名进行了简写;
+
 ## [2.1.1] - 2026-07-12 16:52
 ### 🐛 修复
 - 修复 `electron-main.js` 模板编译后在运行时某些场景下,输入框无法直接输入的问题;
@@ -19,7 +29,3 @@
 - **DNS 解析方式优化**：注释掉 `host-resolver-rules` 强制映射，改用系统 `dns.lookup` 解析域名，避免因 IP 直连导致的 WebAuthn、Cookie 安全策略问题，提升兼容性。
 - **错误处理增强**：统一了依赖安装失败和服务器启动失败的处理流程，调用 `setStatusTextInWin` 设置静态状态文字，确保 UI 反馈清晰。
 - **工具函数补充**：新增 `stopEllipsisInWin` 和 `setStatusTextInWin`，便于主流程控制 UI 状态。
-
-## [2.0.1] - 2026-07-08 14:56
-### 🐛 紧急修复
-- **修复 `electron-main.js` 模板路径错误**：`build.js` 中加载 `electron-main.js` 的路径从 `path.join(__dirname, '..', 'electron-main.js')` 修正为 `path.join(__dirname, 'electron-main.js')`，解决了因路径错误导致构建时找不到模板文件的问题（`ENOENT` 错误）。
