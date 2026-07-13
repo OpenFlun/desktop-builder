@@ -96,7 +96,7 @@ const require = createRequire(import.meta.url),
   </head>
   <body>
   <div class="container">
-    <div class="header"><h1>首次启动环境准备</h1></div>
+    <div class="header"><h1>首次启动准备</h1></div>
     <div class="status-bar">
       <span id="status-text">正在初始化…</span>
       <span id="timer">已用时: 00:00</span>
