@@ -171,12 +171,10 @@ const build = async () => {
         configObj.nsis = { ...configObj.nsis, include: './uninstall.nsh' };
     }
 
-    const configFile = path.join(tempDir, 'builder.json');
-    await fs.writeJson(configFile, configObj, { spaces: 2 });
     // 执行 electron-builder
-    const args = [
-        '--no-install', 'electron-builder', '--project', tempDir, '--config', configFile, platformArg
-    ];
+    const configFile = path.join(tempDir, 'builder.json'),
+        args = ['--no-install', 'electron-builder', '--project', tempDir, '--config', configFile, platformArg];
+    await fs.writeJson(configFile, configObj, { spaces: 2 });
     console.log(chalk.blue('[信息] 正在执行构建: npx ' + args.join(' ')));
 
     let retries = 2, lastError = null, success = false;

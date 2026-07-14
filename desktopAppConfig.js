@@ -207,16 +207,14 @@ export default {
 		'./yarn.lock',
 		'./desktop.ini',
 		'./desktopAppConfig.js',
-		'./sevWin.js',
-		'./unSevWin.js',
+		'./package-lock.json',
 		'*.tgz',
 		'*.log'
 	],
 
 	// 排除依赖包（从最终依赖列表中移除,不会安装）
 	excludeDependencies: [
-		'@flun/desktop-builder',
-		'@flun/windows'
+		'@flun/desktop-builder'
 	],
 
 	/**

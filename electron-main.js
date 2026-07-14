@@ -286,14 +286,6 @@ const require = createRequire(import.meta.url),
     }
 
     let cmd = 'install';
-    const lockPath = path.join(__dirname, 'package-lock.json');
-    try {
-      await fs.promises.access(lockPath, fs.constants.F_OK);
-      cmd = 'ci', onProgress('找到 package-lock.json,使用 npm ci', 'info');
-    } catch {
-      onProgress('未找到 package-lock.json,使用 npm install', 'info');
-    }
-
     const args = [cmd, '--no-optional', '--force', '--no-audit', '--no-fund'],
       env = { ...process.env, npm_config_ignore_scripts: 'true', npm_config_optional: 'false' };
 
