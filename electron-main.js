@@ -285,10 +285,7 @@ const require = createRequire(import.meta.url),
       return onProgress('写入 package.json 失败: ' + err.message, 'error'), stopTimerInWin(win), false;
     }
 
-    let cmd = 'install';
-    const args = [cmd, '--no-optional', '--force', '--no-audit', '--no-fund'],
-      env = { ...process.env, npm_config_ignore_scripts: 'true', npm_config_optional: 'false' };
-
+    const args = ['install', '--force', '--no-audit', '--no-fund'], env = { ...process.env };
     onProgress(`执行 npm ${args.join(' ')} ...`, 'info');
     return new Promise(resolve => {
       const proc = spawn('npm', args, { cwd: __dirname, env, shell: true });
@@ -323,7 +320,7 @@ const require = createRequire(import.meta.url),
             await fs.promises.rm(dir, { recursive: true, force: true }), onProgress(`已删除问题目录: ${dir}`, 'info');
           }
         } catch (cleanErr) {
-          onProgress('清理目录时出错（可忽略）: ' + cleanErr.message, 'warn');
+          if (err.code !== 'ENOENT') onProgress('清理目录时出错（可忽略）: ' + cleanErr.message, 'warn');
         }
 
         try {
@@ -446,8 +443,8 @@ const require = createRequire(import.meta.url),
           webPreferences: {
             ...CONFIG.WINDOW_CONFIG.webPreferences,
             webSecurity: true, allowRunningInsecureContent: true, enableWebAuthn: true,
-            plugins: true, nodeIntegration: true,
-            sandbox: false, contextIsolation: false,
+            plugins: true, nodeIntegration: false,
+            sandbox: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js')
           }
         };
         mainWindow = new BrowserWindow(winConfig);
