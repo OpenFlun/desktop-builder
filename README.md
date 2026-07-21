@@ -213,7 +213,7 @@ build: {
   },
   nsis: {
     oneClick: false,                           // true=一键安装,false=向导安装
-    perMachine: true,                          // true=安装到所有用户（需管理员）,false=当前用户
+    perMachine: false,                         // true=安装到所有用户（需管理员）,false=当前用户
     allowToChangeInstallationDirectory: true,  // 是否允许用户更改安装目录
     createDesktopShortcut: true,               // 创建桌面快捷方式
     createStartMenuShortcut: true,             // 创建开始菜单快捷方式
@@ -325,8 +325,7 @@ excludeFiles: [
 
 ```javascript
 excludeDependencies: [
-  '@flun/desktop-builder',
-  '@flun/windows'
+  '@flun/desktop-builder'
 ]
 ```
 
@@ -400,7 +399,7 @@ export default {
     },
     nsis: {
       oneClick: false,
-      perMachine: true,
+      perMachine: false,
       allowToChangeInstallationDirectory: true,
       createDesktopShortcut: true,
       createStartMenuShortcut: true,

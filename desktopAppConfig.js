@@ -108,7 +108,7 @@ export default {
 		// ----- Windows 安装包选项 (NSIS) -----
 		nsis: {
 			oneClick: false,                 // true=一键安装,false=向导安装
-			perMachine: true,                // true=安装到所有用户,false=仅当前用户
+			perMachine: false,               // true=安装到所有用户,false=仅当前用户
 			allowToChangeInstallationDirectory: true, // 是否允许用户更改安装路径
 			createDesktopShortcut: true,     // 是否创建桌面快捷方式
 			createStartMenuShortcut: true,   // 是否创建开始菜单快捷方式
@@ -129,7 +129,7 @@ export default {
 
 		// ----- macOS 配置（增强） -----
 		mac: {
-			target: ['dmg', 'zip'],          // 构建目标：dmg / zip / pkg / mas 等
+			target: ['zip', 'dmg'],          // 构建目标：dmg / zip / pkg / mas 等
 			icon: './build/icon.png',        // 应用图标,建议 512x512 PNG
 			// 以下为可选高级字段（如需代码签名或 Mac App Store 发布,可取消注释并填写）
 			// identity: 'Developer ID Application: Your Name (TEAM123)', // 签名证书名称
