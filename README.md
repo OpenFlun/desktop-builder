@@ -469,6 +469,11 @@ export default {
     autoKillServer: true,
   },
 
+  // 允许执行脚本的包名列表
+	allowScripts: {
+		'node': true
+	},
+
   excludeFiles: [
     '.vscode/',
     '.git/',
