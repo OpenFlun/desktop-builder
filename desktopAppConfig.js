@@ -192,6 +192,12 @@ export default {
 		autoKillServer: true             // 退出时是否自动关闭后端
 	},
 
+	// 允许执行安装脚本的包名列表
+	allowScripts: {
+		'node': true,
+		'@flun/webauthn-server': true
+	},
+
 	// 排除文件/目录（相对于项目根目录,支持 glob 模式）
 	excludeFiles: [
 		'.vscode/',
@@ -199,7 +205,6 @@ export default {
 		'.git/',
 		'.hintrc',
 		'.greenlockrc',
-		'node_modules/', // ← 默认排除,以优化构建和安装速度（避免签名和解压海量文件）
 		'dist/',
 		'docs/',
 		'temp/',

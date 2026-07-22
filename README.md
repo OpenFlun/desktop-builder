@@ -10,8 +10,7 @@
 
 ## 📖 简介
 
-`@flun/desktop-builder` 是一个 **将本地 Node.js Web 应用打包成桌面安装包** 的构建工具;
-你只需提供一个配置文件,即可生成 Windows（NSIS）、macOS（DMG/ZIP）或 Linux（AppImage/Deb/RPM 等）安装程序;
+`@flun/desktop-builder` 是一个 **将本地 Node.js Web 应用打包成桌面安装包** 的构建工具;你只需提供一个配置文件,即可生成 Windows（NSIS）、macOS（DMG/ZIP）或 Linux（AppImage/Deb/RPM 等）安装程序;
 
 **核心机制**：
 - 该工具会将您的 Node.js 后端服务代码（由 `serverPath` 指定）与 Electron 前端整合,打包为一个独立的桌面应用;
@@ -29,9 +28,9 @@
 - 📦 **灵活的安装选项**：NSIS 支持一键/向导模式,DMG 支持自定义背景、布局,Linux 支持多种包格式;
 - 🎨 **品牌自定义**：应用图标、安装/卸载图标、DMG 卷宗图标、背景图片等（通过 `build` 中各平台字段配置）;
 - 🧩 **菜单自定义**：完全自定义应用菜单（语言、角色、点击回调,甚至内联函数）;
-- 📁 **精细排除**：可排除不需要的文件、依赖包和最终输出文件;
+- 📁 **精细排除**：可排除不需要的文件、依赖包和最终输出文件（`excludeFiles` 现在同时在复制和打包阶段生效）;
 - 🔧 **可扩展**：允许直接添加 `electron-builder` 任意配置字段,并支持后处理钩子;
-- ⏳ **依赖安装进度界面**：首次启动时若 `node_modules` 不存在,自动显示内嵌进度窗口,实时输出 `npm install` / `npm ci` 的完整日志,避免误以为应用卡死;
+- 📦 **依赖预打包**：构建时自动安装生产依赖并打包进应用,用户**首次启动无需联网**,开箱即用;
 - 🎨 **主题切换支持**：通过菜单配置轻松切换浅色/深色/跟随系统主题,提升用户体验;
 
 ---
@@ -40,7 +39,7 @@
 
 ### 允许安装脚本执行
 
-本包在安装时可能触发某些依赖包的自动脚本（如 `postinstall` 等）;如果你的 npm 全局配置或项目配置禁止了脚本执行（例如设置了 `ignore-scripts=true`）,可能会导致安装不完整或运行时异常;
+本包在安装时可能触发某些依赖包的自动脚本（如 `postinstall` 等）；如果你的 npm 全局配置或项目配置禁止了脚本执行（例如设置了 `ignore-scripts=true`）,可能会导致安装不完整或运行时异常；
 
 推荐在项目根目录的 `package.json` 中添加 `allowScripts` 字段,显式放行本包及其依赖的脚本：
 
@@ -53,7 +52,7 @@
 }
 ```
 
-> 如果你信任所有安装包,也可以直接在项目 `.npmrc` 中设置 `allow-scripts = false`（表示关闭脚本拦截,所有脚本均允许执行）,或删除 `allow-script` 字段;
+> 如果你信任所有安装包,也可以直接在项目 `.npmrc` 中设置 `allow-scripts = false`（表示关闭脚本拦截,所有脚本均允许执行）,或删除 `allow-script` 字段；
 
 ---
 
@@ -73,7 +72,7 @@ npm install -D @flun/desktop-builder
 
 ### 1. 配置 `desktopAppConfig.js`
 
-在项目根目录创建或编辑 `desktopAppConfig.js`,填写必填字段：
+在项目根目录创建或编辑 `desktopAppConfig.js`,填写必填字段(自行替换)：
 
 ```javascript
 export default {
@@ -107,19 +106,19 @@ await build();
 
 所有配置均在 `desktopAppConfig.js` 中定义,字段说明如下（`*` 为必填）：
 
-| 字段                  | 类型       | 默认值   | 说明                                                              |
-| --------------------- | ---------- | -------- | ----------------------------------------------------------------- |
-| **`serverPath`**      | `string`   | **必填** | Node.js 启动脚本路径（相对于项目根目录）                          |
-| **`appUrl`**          | `string`   | **必填** | 应用访问地址（如 `http://localhost:7296`）                        |
-| **`appName`**         | `string`   | **必填** | 应用显示名称（标题栏、快捷方式、安装程序等）                      |
-| `enableLogging`       | `boolean`  | `false`  | 是否启用日志文件（调试用）,日志会写入桌面 `myapp_debug.log`       |
-| `window`              | `object`   | 见下方   | 主窗口外观与行为配置（部分字段会被强制覆盖,请注意说明）           |
-| `menu`                | `array`    | 见示例   | 应用菜单模板（支持角色、分隔符、点击回调）                        |
-| `build`               | `object`   | 见下方   | 打包输出配置（可随意添加 `electron-builder` 支持的其他字段）      |
-| `advanced`            | `object`   | 见下方   | 高级运行行为                                                      |
-| `excludeFiles`        | `string[]` | `[]`     | 复制到临时目录时排除的文件/目录（支持 glob）                      |
-| `excludeDependencies` | `string[]` | `[]`     | 从最终依赖列表中移除的 npm 包名（不会打包）                       |
-| `excludeOutputs`      | `string[]` | `[]`     | 从最终输出目录中排除的安装包文件（如 `*.blockmap`、`latest.yml`） |
+| 字段                  | 类型       | 默认值   | 说明                                                                            |
+| --------------------- | ---------- | -------- | ------------------------------------------------------------------------------- |
+| **`serverPath`**      | `string`   | **必填** | Node.js 启动脚本路径（相对于项目根目录）                                        |
+| **`appUrl`**          | `string`   | **必填** | 应用访问地址（如 `http://localhost:7296`）                                      |
+| **`appName`**         | `string`   | **必填** | 应用显示名称（标题栏、快捷方式、安装程序等）                                    |
+| `enableLogging`       | `boolean`  | `false`  | 是否启用日志文件（调试用）,日志会写入桌面 `myapp_debug.log`                     |
+| `window`              | `object`   | 见下方   | 主窗口外观与行为配置（部分字段会被强制覆盖,请注意说明）                         |
+| `menu`                | `array`    | 见示例   | 应用菜单模板（支持角色、分隔符、点击回调）                                      |
+| `build`               | `object`   | 见下方   | 打包输出配置（可随意添加 `electron-builder` 支持的其他字段）                    |
+| `advanced`            | `object`   | 见下方   | 高级运行行为                                                                    |
+| `excludeFiles`        | `string[]` | `[]`     | 复制到临时目录时排除的文件/目录（支持 glob）,**同时会追加到打包阶段的排除规则** |
+| `excludeDependencies` | `string[]` | `[]`     | 从最终依赖列表中移除的 npm 包名（不会打包）                                     |
+| `excludeOutputs`      | `string[]` | `[]`     | 从最终输出目录中排除的安装包文件（如 `*.blockmap`、`latest.yml`）               |
 
 > **注意**：图标配置不再使用独立的 `branding` 字段,而是直接在 `build.win.icon`、`build.mac.icon`、`build.linux.icon` 中分别指定,具体见下方 `build` 配置说明;
 
@@ -165,16 +164,16 @@ window: {
 > - `sandbox: false`          （关闭,以保证服务能够正常运行）
 >
 > **这意味着：**
-> - 您在配置中设置的这三项 **不会生效**,实际运行时将以强制值为准;
-> - **渲染进程拥有完整的 Node.js 能力**,因此**请确保您的应用仅加载受信任的本地内容**,不要加载任何外部网页,否则存在严重安全风险;
-> - 此设计是为了保证后端服务自动启动等核心功能正常工作,**不建议用户尝试重新关闭这些选项**,否则可能导致应用无法运行;
+> - 您在配置中设置的这三项 **不会生效**,实际运行时将以强制值为准；
+> - **渲染进程拥有完整的 Node.js 能力**,因此**请确保您的应用仅加载受信任的本地内容**,不要加载任何外部网页,否则存在严重安全风险；
+> - 此设计是为了保证后端服务自动启动等核心功能正常工作,**不建议用户尝试重新关闭这些选项**,否则可能导致应用无法运行；
 > - 除上述三项外,其他 `webPreferences` 选项（如 `plugins`、`webSecurity`、`enableWebAuthn` 等）**均正常生效**,您可以按需配置;
 
 ---
 
 ### 菜单配置 (`menu`)
 
-支持 Electron 标准菜单模板,可自由修改语言和结构;示例：
+支持 Electron 标准菜单模板,可自由修改语言和结构；示例：
 
 ```javascript
 menu: [
@@ -190,8 +189,8 @@ menu: [
 ]
 ```
 
-- 支持 `role`（标准角色）、`label`、`type`、`click` 等;
-- 特殊字符串 `'__TOGGLE_BROWSER__'` 会被替换为“在浏览器中打开”功能（调用系统默认浏览器打开 `appUrl`）;
+- 支持 `role`（标准角色）、`label`、`type`、`click` 等；
+- 特殊字符串 `'__TOGGLE_BROWSER__'` 会被替换为“在浏览器中打开”功能（调用系统默认浏览器打开 `appUrl`）；
 - `click` 也可直接写函数字符串（需可被 `eval` 执行,例如 `"() => { ... }"`）;
 
 ---
@@ -199,6 +198,16 @@ menu: [
 ### 打包配置 (`build`)
 
 `build` 对象除了下面列出的常用子字段,**还支持直接写入任何 `electron-builder` 官方支持的配置项**（如 `compression`、`extraResources`、`publish` 等）,它们会被合并到最终 `builder.json` 中;
+
+**重要说明**：工具内部硬编码了以下 `files` 排除规则（您无需手动配置）：
+
+- `!builder.json`
+- `!**/*.map`、`!**/*.ts`、`!**/*.cts`、`!**/*.mts`
+- `!node_modules/**/*.md`、`!node_modules/**/*.markdown`、`!node_modules/**/license`、`!node_modules/**/licence`、
+  `!node_modules/**/LICENSE*`、`!node_modules/**/LICENCE*`、`!node_modules/**/node/**`
+- 精准平台绑定目录：`node-win*/**`、`node-darwin*/**`、`node-linux*/**`、`node-freebsd*/**`、`node-sunos*/**`、`node-aix*/**`
+
+如果您需要额外排除文件,请使用 `excludeFiles`（它会自动转换为 `files` 排除规则）;
 
 ```javascript
 build: {
@@ -281,8 +290,7 @@ build: {
 }
 ```
 
-> **平台说明**：构建时只生成**当前运行操作系统**对应的安装包（例如 Windows 下只生成 `.exe`）;但您可以通过 `mac.target` / `linux.target` 同时生成多种格式（如 macOS 同时生成 `.dmg` 和 `.zip`）;
-
+> **平台说明**：构建时只生成**当前运行操作系统**对应的安装包（例如 Windows 下生成 `.exe`,`.msi`...）;
 ---
 
 ### 高级选项 (`advanced`)
@@ -299,13 +307,14 @@ advanced: {
 ### 排除文件 (`excludeFiles`)
 
 在复制项目文件到临时构建目录时,排除指定的文件或目录（支持 glob 模式）;
+**新增行为（v3.0.0）**：这些模式会自动转换为 `electron-builder` 的排除规则（添加 `!` 前缀）,因此也会在**打包阶段生效**;
+
 示例：
 
 ```javascript
 excludeFiles: [
   '.vscode/',
   '.git/',
-  'node_modules/',    // ← 默认排除,以优化构建速度和安装体验
   'dist/',
   '*.log',
   './yarn.lock',
@@ -316,12 +325,14 @@ excludeFiles: [
 - 以 `./` 开头表示仅匹配根目录下的文件（非递归）;
 - 否则匹配任意路径的该模式（`minimatch` 全局匹配）;
 
+> **注意**：由于依赖现已在构建时预安装并打包,所有不再排除 `node_modules`**;
+
 ---
 
 ### 排除依赖包 (`excludeDependencies`)
 
 从最终安装的依赖列表中移除指定的 npm 包（这些包不会被安装到应用内）;
-常用于排除构建工具自身依赖（如 `@flun/desktop-builder`）;
+常用于排除构建工具自身依赖或无用依赖（如 `@flun/desktop-builder`）;
 
 ```javascript
 excludeDependencies: [
@@ -461,10 +472,10 @@ export default {
   excludeFiles: [
     '.vscode/',
     '.git/',
-    'node_modules/',   // 如需离线,请注释掉此行,并参考下方“关于网络依赖与构建性能”
     'dist/',
     '*.log',
     './yarn.lock',
+    './desktopAppConfig.js',
   ],
 
   excludeDependencies: [
@@ -482,82 +493,28 @@ export default {
 
 ## 🌐 关于网络依赖与构建性能
 
-### 为什么默认排除 `node_modules`？
+### 默认行为（v2.2.0+）：构建时打包依赖
 
-在构建过程中,`electron-builder` 会对所有打包进去的文件进行数字签名（Windows 下为 Authenticode,macOS 下为 codesign）,以确保应用未被篡改;
-`node_modules` 目录通常包含成千上万个文件（尤其是大型项目）,签名每个文件会耗费大量 CPU 和 I/O 时间,导致构建速度显著下降;
+- **构建时**会自动执行 `npm install --production`,将 `node_modules` 完整打包进应用;
+- **用户首次启动无需联网**,开箱即用,启动速度显著提升;
+- **安装包体积会增大,构建和安装时间会增长**（包含依赖）,但这是换取流畅用户体验的代价;
 
-**更关键的是,包含 `node_modules` 会导致安装包体积暴增**（通常从几十 MB 涨到数百 MB）,用户下载耗时、安装程序解压和复制数万个小文件的过程极其缓慢（尤其是在 Windows 上,NSIS 解压大量文件非常吃力）;
-这会严重损害**用户安装体验**;
+### 如何回退到运行时安装依赖（旧行为）
 
-**因此,默认在 `excludeFiles` 中排除 `node_modules`,是经过深思熟虑的设计决策——优先保证构建速度和用户安装体验,让开发者能快速迭代,用户也能流畅安装;**
-
-### 默认行为下的网络需求
-
-- 由于安装包不包含依赖,用户首次启动应用时会自动执行 `npm install`（或 `npm ci`）安装生产依赖;
-- 此过程**需要联网**,并且依赖包数量越多,耗时越长;
-- 但只需这一次,依赖安装完成后,后续启动完全离线,且运行性能与本地安装无异;
-- 首次安装时会显示一个美观的进度窗口,实时输出安装日志,避免用户误以为应用卡死;
-
-### 如何实现完全离线运行？
-
-若用户网络环境受限,或您希望交付完全离线的安装包,需在 `excludeFiles` 中**注释掉 `'node_modules/'`**,让依赖被打包;
-但请务必注意：
-- **构建时间会增加**（复制、签名大量文件）;
-- **安装包体积会大幅增大**,用户安装时间也会变长;
-- 权衡利弊,通常仅在以下情况建议包含依赖：
-  - 目标用户网络条件差;
-  - 应用依赖数量较少（< 50 个包）,体积影响可控;
-
-### 优化建议（兼顾速度与离线）
-
-如果您的应用需要完全离线运行（即保留 node_modules 打包进安装包）,请在 `excludeFiles` 中排除那些**与 Electron 内置 Node.js 冲突的目录**及与脚本运行无关的包,例如：
-- `node_modules/node/`（某些原生模块安装时产生的 node 包）
-- `node_modules/node-win-*/`、`node_modules/node-darwin-*/` 等平台特定的二进制目录
-
-这些目录是编译原生模块时的中间产物,运行时会与 Electron 自带的 Node.js 冲突,且完全无用;
-
-#### 示例配置（仅离线场景）：
+如果您希望减小安装包体积,减少构建和安装时间,并允许用户首次启动时联网安装依赖,请安装'v2.1.7'及以下
 
 ```javascript
 excludeFiles: [
-  '.vscode/',
-  '.git/',
-  // 以下模式排除与 Electron 冲突的目录
-  'node_modules/node/',
-  'node_modules/node-win-*/',
-  'node_modules/node-darwin-*/',
-  'node_modules/node-linux-*/',
-  'node_modules/node-freebsd-*/',
-  'node_modules/node-sunos-*/',
-  'node_modules/node-aix-*/',
-  // 剔除无用文件
-  'node_modules/**/*.md',
-  'node_modules/**/test/',
-  'node_modules/**/__tests__/',
-  'node_modules/**/example/',
-  'node_modules/**/examples/',
-  // ... 其它node_modules/的排除包和以外排除项
+  // ... 其他规则
+  'node_modules/',   // 排除依赖,用户首次启动时自动安装
 ]
 ```
 
-**最佳组合方案（推荐）：**
+### 优化建议
 
-- 构建前执行 `npm prune --production`（移除开发依赖）;
-- 保留 `node_modules`,但只包含生产依赖,体积和文件数大大减少;
-- 在 `package.json` 中设置 `scripts.prebuild` 和 `postbuild` 自动管理：
-
-```json
-{
-  "scripts": {
-    "prebuild": "npm prune --production",
-    "build": "npx desktop-builder build",
-    "postbuild": "npm install"
-  }
-}
-```
-
-这样既实现了离线,又通过精简依赖控制了构建和安装时间;
+- 使用 `excludeDependencies` 移除不必要的包（如开发依赖）;
+- 构建前执行 `npm prune --production` 精简依赖;
+- 利用 `build.compression: 'maximum'` 压缩安装包;
 
 ---
 
@@ -572,7 +529,7 @@ excludeFiles: [
 通过设置 `build.afterPack` 或 `build.afterBuild` 等字段（指向项目中的脚本文件）,可以在构建过程中执行自定义操作（例如复制额外文件、重新签名、上传到服务器）;
 
 ### 3. 修改主进程模板（高级）
-目前主进程由内置的 `electron-main.js` 模板生成;如需深度修改主进程逻辑,您可以使用 `patch-package` 对 `@flun/desktop-builder` 打补丁,或者 fork 项目并修改 `build.js` 以支持自定义模板路径（未来版本可能原生支持）;
+目前主进程由内置的 `electron-main.js` 模板生成；如需深度修改主进程逻辑,您可以使用 `patch-package` 对 `@flun/desktop-builder` 打补丁,或者 fork 项目并修改 `build.js` 以支持自定义模板路径（未来版本可能原生支持）;
 
 ### 4. 自行调用 `electron-builder`
 您也可以在 `package.json` 中编写自己的构建脚本,直接调用 `electron-builder` 并引用 `@flun/desktop-builder` 提供的临时构建目录,但这需要您自行管理复制、依赖安装等步骤;
@@ -593,8 +550,8 @@ excludeFiles: [
 ### 3. 应用版本号如何设置？
 - 版本号取自项目根目录下 `package.json` 的 `version` 字段,请直接修改该文件;
 
-### 4. 生成的安装包很大（约 100MB）
-- 正常,Electron 包含完整 Chromium 内核;可通过 `build.compression: 'maximum'` 或 `build.asar: true`（但包内 `asar` 默认为 `false` 以兼容某些后端）进行优化;
+### 4. 生成的安装包很大（约 100MB+）
+- 正常,Electron 包含完整 Chromium 内核,且现在包含 `node_modules`;可通过 `build.compression: 'maximum'` 压缩,或使用 `excludeDependencies` 精简依赖;
 
 ### 5. 如何只生成当前平台的安装包？
 - 默认行为即为只生成当前平台；如需生成其他平台,请在对应操作系统上执行构建命令;
@@ -603,21 +560,23 @@ excludeFiles: [
 - 该特殊标记会被替换为“在系统默认浏览器中打开应用地址”的功能,方便用户测试;
 
 ### 7. 为什么我设置了 `nodeIntegration: false`,但应用仍然能访问 Node.js？
-- 如上方“窗口配置”警告所述,本工具为了自动启动后端服务,**强制启用了 `nodeIntegration` 并关闭了 `contextIsolation` 和 `sandbox`**;
-  这是设计上的必要妥协,但确实降低了安全性；**请勿在应用中加载外部网页或不可信内容**;
+- 如上方“窗口配置”警告所述,本工具为了自动启动后端服务,**强制启用了 `nodeIntegration` 并关闭了 `contextIsolation` 和 `sandbox`**;这是设计上的必要妥协,但确实降低了安全性；**请勿在应用中加载外部网页或不可信内容**;
 
 ### 8. 构建后的应用必须联网才能使用吗？
-- **默认情况下**,首次启动需要联网安装依赖；之后可离线运行;
-  若要完全离线,请在 `excludeFiles` 中保留 `node_modules`（注释掉排除规则）,并考虑使用 `npm prune --production` 精简依赖,以平衡构建速度和安装体验;
+- **默认（v3.0.0+）**：不需要,依赖已打包,可离线运行;
+- 若您在 `excludeFiles` 中排除了 `node_modules`,则首次启动仍需联网安装依赖（只针对旧版本,当前版本已不支持此行为且危险,会造成无法启动应用而报错,建议保持默认）;
 
 ### 9. 首次启动时出现一个日志窗口,显示 npm 安装信息,是正常的吗？
-- 是的;当应用目录下没有 `node_modules` 时,应用会自动安装生产依赖,并显示实时进度窗口,让您了解安装进度;安装完成后窗口会自动切换为应用界面;后续启动因依赖已存在,不会再显示该窗口;
+- 仅当您排除了 `node_modules` 时才会出现（旧行为）;默认情况下（打包依赖）,不会出现该窗口,应用直接启动;
+
+### 10. 我的 `excludeFiles` 中的规则在打包阶段也生效了,如何避免？
+- 如果您希望某些规则仅复制阶段生效,请使用 `build.files` 覆盖,但需谨慎;我们建议统一使用 `excludeFiles`,因为新行为更符合直觉（排除的文件不会出现在最终产物中）;
 
 ---
 
 ## 📄 许可证
 
-ISC © 2026
+ISC © 2026, flun
 
 ---
 
