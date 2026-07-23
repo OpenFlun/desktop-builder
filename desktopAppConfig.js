@@ -108,7 +108,7 @@ export default {
 		// ----- Windows 安装包选项 (NSIS) -----
 		nsis: {
 			oneClick: false,                 // true=一键安装,false=向导安装
-			perMachine: false,               // true=安装到所有用户,false=仅当前用户
+			perMachine: false,               // 默认安装位置:true=安装到所有用户,false=仅当前用户
 			allowToChangeInstallationDirectory: true, // 是否允许用户更改安装路径
 			createDesktopShortcut: true,     // 是否创建桌面快捷方式
 			createStartMenuShortcut: true,   // 是否创建开始菜单快捷方式
