@@ -227,7 +227,7 @@ const build = async () => {
                     ...process.env,
                     ELECTRON_MIRROR: 'https://npmmirror.com/mirrors/electron/',
                     NSIS_MIRROR: 'https://npmmirror.com/mirrors/nsis/',
-                    ELECTRON_BUILDER_BINARIES_MIRROR: 'https://mirrors.huaweicloud.com/electron-builder-binaries/',
+                    ELECTRON_BUILDER_BINARIES_MIRROR: 'https://registry.npmmirror.com/-/binary/electron-builder-binaries/',
                     ELECTRON_BUILDER_CACHE: CACHE_DIR,
                     CSC_IDENTITY_AUTO_DISCOVERY: 'false',
                 },
