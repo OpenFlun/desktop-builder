@@ -35,7 +35,7 @@
 
 ---
 
-## 配置
+## 基础配置
 
 ### 允许安装脚本执行
 
@@ -54,7 +54,7 @@
 
 > 如果你信任所有安装包,也可以直接在项目 `.npmrc` 中设置 `allow-scripts = false`（表示关闭脚本拦截,所有脚本均允许执行）,或删除 `allow-script` 字段;
 
-### 下载依赖(Windows)
+### 下载依赖(Windows必须)
   - 官网:https://jrsoftware.org/isdl.php
   - 国内 https://gitee.com/OpenFlun/inno-setup/releases
 
