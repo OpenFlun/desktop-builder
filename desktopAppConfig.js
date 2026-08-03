@@ -3,12 +3,12 @@
  * 所有路径相对于项目根目录
  */
 export default {
-	// 必填字段:serverPath,appUrl,appName;
+	// 必填字段:serverPath,appUrl;
 	serverPath: './server.js',           // 网站启动脚本路径
 	appUrl: 'http://www.abc.com:7296',   // 网站访问地址
-	appName: '我的桌面应用',              // 应用显示名称
-	enableLogging: false,                // 是否启用日志文件记录,默认关闭
 
+	appName: null,                       // 应用显示名称(默认从 package.json 读取 name)
+	enableLogging: false,                // 是否启用日志文件记录,默认关闭
 	// 窗口配置
 	window: {
 		width: 1200,                      // 默认宽度(px)
@@ -102,35 +102,124 @@ export default {
 
 	// 打包配置
 	build: {
-		appId: 'com.mycompany.myapp',    	// 应用唯一标识（反向域名格式）
-		outputDir: './dist',             	// 安装包输出目录
+		appId: 'com.example.app',     	   // 应用唯一标识（反向域名格式）
+		outputDir: './dist',               // 安装包输出目录
+		publisher: null,                   // 发布者名称（用于安装程序信息,默认从 package.json 读取 author）
+		shortcutName: null,       		   // 快捷方式名称（默认从 package.json 读取 name）
+		asar: false,          			   // 不启用 asar 打包,启用可能导致某些依赖(如需要动态加载资源文件的模块)无法正常工作等
+		npmRebuild: false,    			   // 不启用原生模块重编译,默认关闭能减少构建时间
 
-		// ----- Windows 安装包选项 (NSIS) -----
-		nsis: {
-			oneClick: false,                 // true=一键安装,false=向导安装
-			perMachine: false,               // 默认安装位置:true=安装到所有用户,false=仅当前用户
-			allowToChangeInstallationDirectory: true, // 是否允许用户更改安装路径
-			createDesktopShortcut: true,     // 是否创建桌面快捷方式
-			createStartMenuShortcut: true,   // 是否创建开始菜单快捷方式
-			shortcutName: '我的桌面应用',     // 快捷方式名称
-			deleteAppDataOnUninstall: false, // 卸载时是否删除用户数据
-			installerHeader: './build/installerHeader.bmp',      // 安装头横幅,格式为 BMP,150×57
-			installerSidebar: './build/installerSidebar.bmp',    // 安装侧边栏,格式为 BMP,164×314
-			uninstallerSidebar: './build/uninstallerSidebar.bmp',// 卸载侧边栏,格式为 BMP,164×314
-			installerIcon: './build/installerIcon.ico',          // 安装程序图标（必须 .ico）
-			uninstallerIcon: './build/uninstallerIcon.ico'       // 卸载程序图标（必须 .ico）
-		},
-		// Windows 平台通用配置（可覆盖或补充）
+		// Win 平台配置
 		win: {
-			target: ['nsis'],                // 构建目标：nsis / portable / zip 等
-			icon: './build/icon.png',        // 应用图标,建议 512x512 PNG
-			// 其他可选字段：icon, publisherName, signingHashAlgorithms 等
+			icon: './build/icon.png'      // 应用图标（.png 格式）,用于快捷方式和文件图标,建议 512x512 PNG
+		},
+		// Win Inno Setup(基于7.0.2版本) 选项
+		inno: {
+			// 基础信息
+			appName: undefined,            // 应用显示名称(默认使用 build.appName)
+			appVersion: undefined,         // 版本号(默认从 package.json 读取 version)
+			appPublisher: undefined,       // 发布者(默认使用 build.publisher)
+			appId: undefined,              // 应用唯一标识(默认使用 build.appId)
+			defaultDirName: null, 		   // 默认安装目录,支持变量:{autopf}, {pf}, {app}等(如'D:\\MyApp';默认从 package.json 读取 name)
+			defaultGroupName: undefined,   // 开始菜单文件夹名(默认从 package.json 读取 name)
+			outputDir: undefined,          // 输出目录(默认使用 build.outputDir)
+			outputBaseFilename: undefined, // 安装包文件名(默认 <build.appName>Setup.exe)
+
+			// 界面控制
+			disableWelcomePage: false,      // true=跳过欢迎页
+			disableDirPage: false,          // true=禁止更改安装路径
+			disableProgramGroupPage: false, // true=禁止选择开始菜单文件夹
+			disableFinishedPage: false,     // true=隐藏“安装完成”页面(安装后直接关闭向导)
+			disableReadyPage: false,        // true=隐藏“准备安装”确认页
+			disableReadyMemo: false,        // true=在准备页不显示设置摘要
+			disableStartupPrompt: false,    // true=禁止启动时显示“是否安装...”的提示框
+			showLanguageDialog: true,       // true=显示语言选择对话框
+			flatComponentsList: false,      // true=组件列表使用扁平(无边框)样式
+			showComponentSizes: false,      // true=在组件选择页面显示每个组件的大小
+			showTasksTreeLines: false,      // true=在任务选择页面显示树形连线
+			setupIconFile: './build/setup.ico',         	 	 // 安装程序图标(.ico)
+			uninstallDisplayIcon: './build/uninstallerIcon.ico', // 卸载程序图标路径(.ico)
+			// 向导样式(颜色格式支持 $bbggrr/#bbggrr/颜色名->英文)
+			WizardStyle: 'dynamic',          // 向导样式:modern/classic/dynamic/dark/light/hidebevels等等,可组合
+			WizardImageFile: './build/wizard.bmp',      	 	   // 左侧大图(164×314 BMP)
+			WizardSmallImageFile: './build/wizardSmall.bmp', 	   // 右上小图(55×58 BMP)
+			// WizardBackImageFile: './build/background.png', 	   // 背景图片路径(PNG格式)
+			WizardImageFileDynamicDark: './build/wizard.bmp',	   // 向导样式为'dynamic'时深色模式下的左侧大图
+			WizardSmallImageFileDynamicDark: './build/wizardSmall.bmp',// 向导样式为'dynamic'时深色模式下的右上小图
+			// WizardBackImageFileDynamicDark: './build/darkBg.png',// 向导样式为'dynamic'时深色模式下的背景图片路径
+			WizardImageBackColor: '#CE2751',	  	 			   // 标准模式下左侧大图的背景色
+			WizardSmallImageBackColor: '#CE2751', 	 			   // 标准模式下右上小图的背景色
+			WizardBackColor: '#CE2751',   		 	   		 	   // 标准模式下的背景色
+			WizardImageBackColorDynamicDark: '#228866',	  	   // 向导样式为'dynamic'时深色模式下的左侧大图的背景色
+			WizardSmallImageBackColorDynamicDark: '#228866', 	   // 向导样式为'dynamic'时深色模式下的右上小图的背景色
+			WizardBackColorDynamicDark: '#228866', 	   		   // 向导样式为'dynamic'时深色模式下的背景色
+			WizardImageOpacity: 200,           					    // 图标不透明度(0-255)
+			// WizardBackImageOpacity: 200,						    // 背景图片的不透明度(0-255)
+			WizardImageStretch: true,         					    // 向导图片是否始终填充整个区域(默认true, false=保持原始大小且居中)
+
+			// 权限
+			privilegesRequired: 'lowest',   		 			 // 所需权限:admin / lowest / poweruser
+			privilegesRequiredOverridesAllowed: 'dialog',        // 通过对话框选择提升权限,commandline(通过命令行)
+
+			// 许可和说明文件
+			// licenseFile: './LICENSE.txt',  		 // 许可协议文件
+			// infoBeforeFile: './info_before.txt', // 安装前显示的文件
+			// infoAfterFile: './info_after.txt',   // 安装后显示的文件
+
+			// 压缩
+			compression: 'lzma2',          // 压缩方式:lzma2 / zip / none
+			solidCompression: true,        // 是否固实压缩(默认true)
+			LZMADictionarySize: 4096,      // LZMA 字典大小(单位 KB,推荐 4096 平衡速度与体积)
+			LZMANumFastBytes: 64,          // LZMA 快速字节数(默认 64,可微调)
+
+			// 快捷方式
+			createDesktopShortcut: true,   // 是否创建桌面快捷方式
+			createStartMenuShortcut: true, // 是否创建开始菜单快捷方式
+			shortcutName: undefined,       // 快捷方式名称(默认使用 build.shortcutName)
+
+			// 安装后运行
+			runAfterInstall: true,         // 安装完成后是否运行应用
+			runDescription: '运行应用',     // 运行复选框的描述文字
+
+			// 高级选项
+			languageDetectionMethod: 'uilanguage', // 语言检测方式:uilanguage / locale / none
+			allowCancelDuringInstall: true,    	   // 是否允许安装过程中取消(默认true)
+			usePreviousAppDir: true,       	   	   // 是否记住上次安装目录(升级时,默认true)
+			usePreviousGroup: true,        	   	   // 升级时是否记住上次的开始菜单文件夹(默认true)
+			usePreviousSetupType: true,    	   	   // 升级时是否记住上次选择的安装类型(默认true)
+			usePreviousTasks: true,        	   	   // 升级时是否记住上次选择的任务(如桌面快捷方式,默认true)
+			usePreviousLanguage: true,     	   	   // 升级时是否记住上次选择的语言(默认true)
+			updateUninstallLogAppName: false, 	   // true=更新卸载日志中的应用名称
+			uninstallable: true,           	   	   // 是否可卸载
+			createUninstallRegKey: true,   	   	   // 是否创建卸载注册表项
+			uninstallDisplayName: '卸载(name)',    // 在“添加/删除程序”中显示的名称
+			uninstallLogMode: 'append',       	   // 卸载日志模式:new / append / overwrite
+			appSupportURL: undefined,      	   	   // 支持网址
+			appUpdatesURL: undefined,      	   	   // 更新网址
+			appPublisherURL: '',           	   	   // 发布者网址(写入卸载注册表)
+			appReadmeFile: '',             	   	   // 自述文件路径(建议 .txt 或 .rtf)
+			appContact: '',                	   	   // 联系信息(如邮箱)
+			appComments: '',               	   	   // 备注信息
+			versionInfoVersion: undefined, 	   	   // 文件版本信息(默认从 package.json 读取 version)
+			versionInfoDescription: undefined, 	   // 文件描述
+			versionInfoCopyright: undefined, 	   // 版权信息
+			versionInfoCompany: undefined, 		   // 公司名称(默认从 package.json 读取 name)
+			signedUninstaller: false,      		   // 是否为卸载程序签名
+			signingTool: undefined,        		   // 签名工具命令(如 signtool.exe)
+			signToolParams: undefined,     		   // 签名参数
+			// 系统要求与架构
+			minVersion: '10.0.17763',              // 最低 Windows 版本(这里设为 Win10 1809+,可调整)
+			onlyBelowVersion: '',          		   // 限制最高可运行的版本(如 '6.2' 表示不能运行在 Win8 及以上)
+			useSetupLdr: true,                     // true=使用 SetupLdr 引导程序(处理 UAC 和系统版本检查)
+			// *** 更多字段请自行根据官网添加 ***
+			// 官方文档: https://jrsoftware.org/ishelp/index.php?topic=setup
+			// 本人整理的中文文档:https://gitee.com/OpenFlun/inno-setup
 		},
 
-		// ----- macOS 配置（增强） -----
+		// macOS 配置
 		mac: {
 			target: ['zip', 'dmg'],          // 构建目标：dmg / zip / pkg / mas 等
-			icon: './build/icon.png',        // 应用图标,建议 512x512 PNG
+			icon: './build/icon.icns',       // 应用图标,建议 512x512 .icns
 			// 以下为可选高级字段（如需代码签名或 Mac App Store 发布,可取消注释并填写）
 			// identity: 'Developer ID Application: Your Name (TEAM123)', // 签名证书名称
 			// hardenedRuntime: true,        // 启用 Hardened Runtime
@@ -154,7 +243,7 @@ export default {
 			// ]
 		},
 
-		// ----- Linux 配置（增强） -----
+		// ----- Linux 配置（增强）-----
 		linux: {
 			target: ['AppImage', 'deb'],     // 构建目标：AppImage / deb / rpm / snap / flatpak 等
 			category: 'Development',         // 系统菜单分类（如 Utility, Network, Development 等）
@@ -184,51 +273,51 @@ export default {
 		// deb: {
 		//   depends: ['libgtk-3-0']        // deb 包的依赖
 		// },
-	},
 
-	// 高级选项
-	advanced: {
-		autoStartServer: true,           // 是否自动启动后端服务
-		autoKillServer: true             // 退出时是否自动关闭后端
-	},
+		// 高级选项
+		advanced: {
+			autoStartServer: true,           // 是否自动启动后端服务
+			autoKillServer: true             // 退出时是否自动关闭后端
+		},
 
-	// 允许执行安装脚本的包名列表
-	allowScripts: {
-		'node': true,
-		'@flun/webauthn-server': true
-	},
+		// 允许执行安装脚本的包名列表
+		allowScripts: {
+			'node': true,
+			'@flun/webauthn-server': true
+		},
 
-	// 排除文件/目录（相对于项目根目录,支持 glob 模式）
-	excludeFiles: [
-		'.vscode/',
-		'.idea/',
-		'.git/',
-		'.hintrc',
-		'.greenlockrc',
-		'dist/',
-		'docs/',
-		'temp/',
-		'tests/',
-		'./yarn.lock',
-		'./desktop.ini',
-		'./desktopAppConfig.js',
-		'./package-lock.json',
-		'*.tgz',
-		'*.log'
-	],
+		// 排除文件/目录（相对于项目根目录,支持 glob 模式）
+		excludeFiles: [
+			'.vscode/',
+			'.idea/',
+			'.git/',
+			'.hintrc',
+			'.greenlockrc',
+			'dist/',
+			'docs/',
+			'temp/',
+			'tests/',
+			'./yarn.lock',
+			'./desktop.ini',
+			'./desktopAppConfig.js',
+			'./package-lock.json',
+			'*.tgz',
+			'*.log'
+		],
 
-	// 排除依赖包（从最终依赖列表中移除,不会安装）
-	excludeDependencies: [
-		'@flun/desktop-builder'
-	],
+		// 排除依赖包（从最终依赖列表中移除,不会安装）
+		excludeDependencies: [
+			'@flun/desktop-builder'
+		],
 
-	/**
-	 * 排除输出文件（在最终输出目录中排除某些安装包文件）
-	 * 例如 *.blockmap、latest.yml 等;
-	 * 注意：此配置仅在复制最终安装包到输出目录时生效,不影响构建过程;
-	 */
-	excludeOutputs: [
-		'*.blockmap',
-		'latest.yml'
-	]
+		/**
+		 * 排除输出文件（在最终输出目录中排除某些安装包文件）
+		 * 例如 *.blockmap、latest.yml 等;
+		 * 注意：此配置仅在复制最终安装包到输出目录时生效,不影响构建过程;
+		 */
+		excludeOutputs: [
+			'*.blockmap',
+			'latest.yml'
+		]
+	}
 };
