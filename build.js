@@ -234,11 +234,11 @@ const build = async () => {
         // 生成 Inno Setup 脚本
         generateIssScript = async ({
             appName, appVersion, appId, publisher, appDir, outputDir, exeName, shortcutName, installDirName, outputBase,
-            groupName, isccDir, inno = {}
+            groupName, versionInfoVersion, isccDir, inno = {}
         }) => {
             const { createStartMenuShortcut, createDesktopShortcut, runAfterInstall, runDescription, ...remaining } = inno,
                 excludeKeys = ['AppId', 'AppName', 'AppPublisher', 'AppVersion', 'defaultDirName', 'defaultGroupName',
-                    'OutputDir', 'outputBaseFilename'];
+                    'shortcutName', 'OutputDir', 'outputBaseFilename', 'versionInfoVersion'];
             for (const key of excludeKeys) delete remaining[key]; // 排除已在外部特殊处理的字段
 
             // 构建 [Setup] 节
@@ -260,6 +260,7 @@ const build = async () => {
             addLine('DefaultGroupName', groupName);
             addLine('OutputDir', outputDir);
             addLine('OutputBaseFilename', outputBase);
+            addLine('versionInfoVersion', versionInfoVersion || appVersion);
             // 自动处理剩余字段
             for (const [key, value] of Object.entries(remaining)) addLine(key, value);
             // 语言文件
@@ -425,7 +426,7 @@ const build = async () => {
 
         const {
             appName: innoAppName, appVersion: innoVersion, appId: innoAppId, appPublisher, defaultDirName, defaultGroupName,
-            shortcutName: innoShortcut, outputDir: innoOutputDir, outputBaseFilename
+            shortcutName: innoShortcut, outputDir: innoOutputDir, outputBaseFilename, versionInfoVersion
         } = innoConfig, sourceDir = innoOutputDir || path.join(tempDir, 'Output'), appExe = path.join(appDir, exeName),
             issContent = await generateIssScript({
                 appName: innoAppName || appName,
@@ -437,7 +438,7 @@ const build = async () => {
                 installDirName: defaultDirName || `{localappdata}\\Programs\\${appName}`,
                 groupName: defaultGroupName || appName,
                 outputBase: outputBaseFilename || `${appName}Setup`,
-                shortcutName: innoShortcut || userShortcutName || appName,
+                shortcutName: innoShortcut || userShortcutName || appName, versionInfoVersion,
                 isccDir: path.dirname(isccPath), inno: innoConfig
             }), issPath = path.join(tempDir, 'installer.iss');
         await fs.writeFile(issPath, issContent);

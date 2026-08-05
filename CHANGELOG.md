@@ -1,4 +1,25 @@
 # 变更日志
+## [4.1.1] - 2026-08-05 19:24
+### 修正
+- 声明实际字段默认值以下为准（当前版本已对配置默认值进行修正，确保与代码实现一致）：
+  - `appName`：默认从 `package.json` 的 `name` 读取，若不存在则为 `'deskApp'`
+  - `build.publisher`：默认从 `package.json` 的 `author` 读取
+  - `build.shortcutName`：默认使用 `build.appName`
+  - `build.inno.appName`：默认使用 `build.appName`
+  - `build.inno.appVersion`：默认从 `package.json` 的 `version` 读取
+  - `build.inno.appPublisher`：默认使用 `build.publisher`
+  - `build.inno.appId`：默认使用 `build.appId`
+  - `build.inno.defaultDirName`：默认使用 `build.appName`
+  - `build.inno.defaultGroupName`：默认使用 `build.appName`
+  - `build.inno.outputDir`：默认使用 `build.outputDir`
+  - `build.inno.outputBaseFilename`：默认 `<build.appName>Setup.exe`
+  - `build.inno.shortcutName`：默认使用 `build.shortcutName
+  - `build.inno.versionInfoVersion`：默认使用 `inno.appVersion`
+  - `build.inno.versionInfoCompany`：默认使用 `build.appName`
+### 修复
+- 修复了某些特殊场景下构建时报快捷方式配置错误的问题;
+- 修复了默认值不对的问题;
+
 ## [4.1.0] - 2026-08-05 11:44
 ### 新增
 - 新增自动下载 Inno Setup,下载存放位置:"C:\Users\你的用户名\.electron-builder-cache" 下;
@@ -27,7 +48,3 @@
   - 国内 https://gitee.com/OpenFlun/inno-setup/releases
 
 **`注意安装时一定要选择默认安装路径,不然会因为找不到文件而构建失败;`**
-
-## [3.0.5] - 2026-07-26 14:11
-### 优化
-- 依赖包更新;

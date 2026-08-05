@@ -105,7 +105,7 @@ export default {
 		appId: 'com.example.app',     	   // 应用唯一标识（反向域名格式）
 		outputDir: './dist',               // 安装包输出目录
 		publisher: null,                   // 发布者名称（用于安装程序信息,默认从 package.json 读取 author）
-		shortcutName: null,       		   // 快捷方式名称（默认从 package.json 读取 name）
+		shortcutName: null,       		   // 快捷方式名称（默认使用 build.appName）
 		asar: false,          			   // 不启用 asar 打包,启用可能导致某些依赖(如需要动态加载资源文件的模块)无法正常工作等
 		npmRebuild: false,    			   // 不启用原生模块重编译,默认关闭能减少构建时间
 
@@ -120,8 +120,8 @@ export default {
 			appVersion: undefined,         // 版本号(默认从 package.json 读取 version)
 			appPublisher: undefined,       // 发布者(默认使用 build.publisher)
 			appId: undefined,              // 应用唯一标识(默认使用 build.appId)
-			defaultDirName: null, 		   // 默认安装目录,支持变量:{autopf}, {pf}, {app}等(如'D:\\MyApp';默认从 package.json 读取 name)
-			defaultGroupName: undefined,   // 开始菜单文件夹名(默认从 package.json 读取 name)
+			defaultDirName: null, 		   // 默认安装目录,支持变量:{autopf}, {pf}, {app}等(如'D:\\MyApp';默认使用 build.appName)
+			defaultGroupName: undefined,   // 开始菜单文件夹名(默认使用 build.appName)
 			outputDir: undefined,          // 输出目录(默认使用 build.outputDir)
 			outputBaseFilename: undefined, // 安装包文件名(默认 <build.appName>Setup.exe)
 
@@ -162,7 +162,7 @@ export default {
 			privilegesRequiredOverridesAllowed: 'dialog',        // 通过对话框选择提升权限,commandline(通过命令行)
 
 			// 许可和说明文件
-			// licenseFile: './LICENSE.txt',  		 // 许可协议文件
+			// licenseFile: './LICENSE.txt',  		// 许可协议文件
 			// infoBeforeFile: './info_before.txt', // 安装前显示的文件
 			// infoAfterFile: './info_after.txt',   // 安装后显示的文件
 
@@ -200,10 +200,10 @@ export default {
 			appReadmeFile: '',             	   	   // 自述文件路径(建议 .txt 或 .rtf)
 			appContact: '',                	   	   // 联系信息(如邮箱)
 			appComments: '',               	   	   // 备注信息
-			versionInfoVersion: undefined, 	   	   // 文件版本信息(默认从 package.json 读取 version)
+			versionInfoVersion: undefined, 	   	   // 文件版本信息(默认使用 inno.appVersion)
 			versionInfoDescription: undefined, 	   // 文件描述
 			versionInfoCopyright: undefined, 	   // 版权信息
-			versionInfoCompany: undefined, 		   // 公司名称(默认从 package.json 读取 name)
+			versionInfoCompany: undefined, 		   // 公司名称(默认使用 `build.appName`)
 			signedUninstaller: false,      		   // 是否为卸载程序签名
 			signingTool: undefined,        		   // 签名工具命令(如 signtool.exe)
 			signToolParams: undefined,     		   // 签名参数
