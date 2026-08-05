@@ -50,7 +50,8 @@
     "README.md"
   ],
   "dependencies": {
-    "electron": "^43.2.0",
+    "adm-zip": "^0.6.0",
+    "electron": "^43.3.0",
     "electron-builder": "^26.15.3",
     "execa": "^10.0.1",
     "fs-extra": "^11.4.0",

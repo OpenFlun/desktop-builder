@@ -54,11 +54,13 @@
 
 > 如果你信任所有安装包,也可以直接在项目 `.npmrc` 中设置 `allow-scripts = false`（表示关闭脚本拦截,所有脚本均允许执行）,或删除 `allow-script` 字段;
 
-### 下载依赖(Windows必须)
+### 下载依赖(Windows)
   - 官网:https://jrsoftware.org/isdl.php
   - 国内 https://gitee.com/OpenFlun/inno-setup/releases
 
-**`注意安装时一定要选择默认安装路径,不然会因为找不到文件而构建失败;`**
+1. 大部分情况下无需手动下载,当前版本以植入自动下载安装;
+2. 安装版手动安装时一定要选择默认安装路径,不然会因为找不到文件而构建失败;
+3. 如果你是在国内下载的便捷版压缩文件,请解压到 "C:\Users\你的用户名\.electron-builder-cache" 下;
 
 ---
 

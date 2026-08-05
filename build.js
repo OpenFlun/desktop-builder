@@ -6,6 +6,7 @@ import { createRequire } from 'module';
 import chalk from 'chalk';
 import { execa } from 'execa';
 import { minimatch } from 'minimatch';
+import AdmZip from 'adm-zip';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = createRequire(import.meta.url),
     CACHE_DIR = path.join(os.homedir(), '.electron-builder-cache');
@@ -16,19 +17,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
 const build = async () => {
     // 公共初始化
     const origPkgPath = path.join(process.cwd(), 'package.json');
-    if (!(await fs.pathExists(origPkgPath)))
-        console.warn(chalk.yellow('[错误] 请配置 package.json 文件')), process.exit(1);
+    if (!(await fs.pathExists(origPkgPath))) console.warn(chalk.yellow('[错误] 请配置 package.json 文件')), process.exit(1);
     const configPath = path.join(process.cwd(), 'desktopAppConfig.js');
-    if (!(await fs.pathExists(configPath)))
-        console.error(chalk.red('[错误] desktopAppConfig.js 文件缺失')), process.exit(1);
+    if (!(await fs.pathExists(configPath))) console.error(chalk.red('[错误] desktopAppConfig.js 文件缺失')), process.exit(1);
     const configModule = await import(`file://${configPath}?t=${Date.now()}`),
         {
             serverPath, appUrl, appName: userAppName, excludeFiles = [], excludeDependencies = [],
             excludeOutputs = [], enableLogging = false, allowScripts, menu, window: windowConfig = {},
             advanced: userAdvanced = {}, build: buildConfig = {}
         } = configModule.default;
-    if (!serverPath || !appUrl)
-        console.error(chalk.red('[错误] 配置文件缺少必填字段: serverPath, appUrl')), process.exit(1);
+    if (!serverPath || !appUrl) console.error(chalk.red('[错误] 配置文件缺少必填字段: serverPath, appUrl')), process.exit(1);
 
     const origPkg = await fs.readJson(origPkgPath), { name: pkgName, version: pkgVersion, author: pkgAuthor } = origPkg,
         appName = userAppName || pkgName || 'deskApp',
@@ -40,7 +38,6 @@ const build = async () => {
 
     await fs.ensureDir(CACHE_DIR);
     process.env.ELECTRON_BUILDER_CACHE = CACHE_DIR, process.env.ELECTRON_CACHE = CACHE_DIR;
-
     const tempDir = path.join(os.tmpdir(), 'desktop-builder-build', path.basename(process.cwd()));
     await fs.ensureDir(tempDir);
 
@@ -50,7 +47,7 @@ const build = async () => {
         if (item === 'node_modules' || item === snapshotFile) continue;
         await fs.remove(path.join(tempDir, item));
     }
-
+    // 复制需要的项目文件到临时目录
     const projectRoot = path.resolve(process.cwd()), isInDirectory = (relative, dir) => {
         return relative === dir || relative.startsWith(dir + path.sep);
     }, shouldExclude = (relative, patterns) => {
@@ -75,7 +72,6 @@ const build = async () => {
             return !shouldExclude(relative, excludeFiles);
         }, dereference: true
     });
-
     // 生成 main.mjs
     const mainFilePath = path.join(__dirname, 'electron-main.js'), mainTem = await fs.readFile(mainFilePath, 'utf-8');
     let menuCode = 'null';
@@ -121,7 +117,6 @@ const build = async () => {
         });
         await fs.writeJson(snapshotPath, snapshotData, { spaces: 2 });
     }
-
     // 更新 allowScripts
     if (await fs.pathExists(rootPkgPath)) {
         try {
@@ -158,7 +153,6 @@ const build = async () => {
         ], output = path.join(tempDir, 'app'),
         configObj = { files, asar: false, npmRebuild: false, electronVersion, appId, productName: appName, ...restBuild };
     configObj.directories = { ...(configObj.directories || {}), output };
-
     // 平台特定配置（映射处理）
     const platform = process.platform,
         platformHandlers = {
@@ -229,12 +223,11 @@ const build = async () => {
     const copyArtifacts = async (srcDir, targetDir, patterns, excludePatterns) => {
         if (!await fs.pathExists(srcDir)) return false;
         await fs.ensureDir(targetDir);
-        const files = await fs.readdir(srcDir),
-            filtered = files.filter(file => !excludePatterns.some(p => minimatch(file, p, { dot: true })));
+        const files = await fs.readdir(srcDir);
         let copied = 0;
-        for (const file of filtered) {
-            if (patterns.some(p => file.endsWith(p)))
-                await fs.copy(path.join(srcDir, file), path.join(targetDir, file)), copied++;
+        for (const file of files) {
+            if (excludePatterns.some(p => minimatch(file, p, { dot: true }))) continue;
+            if (patterns.some(p => file.endsWith(p))) await fs.copy(path.join(srcDir, file), path.join(targetDir, file)), copied++;
         }
         return copied > 0;
     },
@@ -342,45 +335,98 @@ const build = async () => {
                   end;
                 end;`);
             return sections.join('\n\n');
-        };
+        },
+        ensureInnoSetup = async () => {
+            const innoDirName = process.arch === 'x64' ? 'inno-setup-x64' : 'inno-setup-x86',
+                cacheDir = path.join(CACHE_DIR, innoDirName),
+                [isccExe, versionFile] = ['ISCC.exe', 'version.txt'].map(f => path.join(cacheDir, f)),
+                cacheComplete = await fs.pathExists(isccExe) && await fs.pathExists(versionFile);
+
+            let latestTag, asset;
+            try {
+                const res = await fetch('https://gitee.com/api/v5/repos/OpenFlun/inno-setup/releases/latest');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                latestTag = data.tag_name, asset = data.assets.find(a => a.name === `${innoDirName}.zip`);
+                if (!asset) throw new Error('附件不存在');
+            } catch (err) {
+                if (cacheComplete) return console.warn(chalk.yellow('[警告] 获取最新版本失败,继续使用旧缓存')), isccExe;
+                throw new Error(`使用缓存构建无效: ${err.message}`);
+            }
+            if (cacheComplete)
+                try {
+                    if ((await fs.readFile(versionFile, 'utf-8')).trim() === latestTag) return isccExe;
+                } catch (_) { }
+
+            // 备份旧缓存
+            const backupDir = path.join(CACHE_DIR, `${innoDirName}-backup`);
+            if (cacheComplete) await fs.move(cacheDir, backupDir, { overwrite: true }).catch(() => { });
+            await fs.ensureDir(cacheDir);
+
+            const zipPath = path.join(cacheDir, `${innoDirName}.zip`);
+            console.log(chalk.blue(`[信息] 正在下载最新版:${latestTag}...`));
+            try {
+                const res = await fetch(asset.browser_download_url);
+                if (!res.ok) throw new Error(`下载失败: ${res.status}`);
+                // 解压到缓存目录
+                await fs.writeFile(zipPath, Buffer.from(await res.arrayBuffer()));
+                const zip = new AdmZip(zipPath);
+                zip.extractAllTo(cacheDir, true), await fs.remove(zipPath);
+
+                if (!(await fs.pathExists(isccExe) && await fs.pathExists(versionFile))) throw new Error('解压后缺少关键文件');
+                await fs.remove(backupDir).catch(() => { });
+                return console.log(chalk.green(`[信息]最新版:${latestTag} 安装成功,继续构建...`)), isccExe;
+            } catch (err) {
+                console.error(chalk.red(`[错误] 更新失败: ${err.message}`)), await fs.remove(cacheDir).catch(() => { });
+                if (cacheComplete) {
+                    await fs.move(backupDir, cacheDir, { overwrite: true }).catch(() => { });
+                    return console.log(chalk.yellow('[提示] 已回滚至旧版本,继续构建...')), isccExe;
+                }
+                throw new Error('使用缓存构建无效');
+            }
+        }, targetDir = path.resolve(process.cwd(), outputDir), appDir = path.join(output, subDir);
     // 平台打包
-    const targetDir = path.resolve(process.cwd(), outputDir), appDir = path.join(output, subDir);
     if (platform === 'win32') {
-        console.log(chalk.gray('正在执行 Inno Setup 编译(时间可能2~5分钟,请稍作休息)...'));
+        console.log(chalk.gray('正在执行 Inno Setup 编译(时间2~5分钟,请稍作休息)...'));
         if (!(await fs.pathExists(appDir))) console.error(chalk.red('[错误] 未找到 win-unpacked 目录;')), process.exit(1);
         const exeFiles = await fs.readdir(appDir), exeName = exeFiles.find(f => f.endsWith('.exe'));
         if (!exeName) console.error(chalk.red('[错误] 未找到可执行文件;')), process.exit(1);
 
-        const appExe = path.join(appDir, exeName), isccPath = await (async () => {
-            try {
-                const { stdout } = await execa('where', ['iscc']);
-                if (stdout.trim()) return stdout.trim().split('\n')[0];
-            } catch (_) { }
-            const { ProgramFiles = 'C:\\Program Files', 'ProgramFiles(x86)': ProgramFilesX86 = 'C:\\Program Files (x86)'
-            } = process.env, programFiles = [ProgramFiles, ProgramFilesX86];
-            for (const pf of programFiles) {
+        let isccPath;
+        try {
+            isccPath = await ensureInnoSetup();
+        } catch (error) {
+            console.log(chalk.yellow('[提示] 将尝试使用系统已安装的 Inno Setup ...'));
+            isccPath = await (async () => {
                 try {
-                    const dirs = await fs.readdir(pf);
-                    for (const dir of dirs) {
-                        if (dir.startsWith('Inno Setup')) {
-                            const exe = path.join(pf, dir, 'ISCC.exe');
-                            if (await fs.pathExists(exe)) return exe;
-                        }
-                    }
+                    const { stdout } = await execa('where', ['iscc']);
+                    if (stdout.trim()) return stdout.trim().split('\n')[0];
                 } catch (_) { }
-            }
-            return null;
-        })();
+                const { ProgramFiles = 'C:\\Program Files', 'ProgramFiles(x86)': ProgramFilesX86 = 'C:\\Program Files (x86)'
+                } = process.env, programFiles = [ProgramFiles, ProgramFilesX86];
+                for (const pf of programFiles) {
+                    try {
+                        const dirs = await fs.readdir(pf);
+                        for (const dir of dirs) {
+                            if (dir.startsWith('Inno Setup')) {
+                                const exe = path.join(pf, dir, 'ISCC.exe');
+                                if (await fs.pathExists(exe)) return exe;
+                            }
+                        }
+                    } catch (_) { }
+                }
+                return null;
+            })();
+        }
         if (!isccPath) {
             console.error(chalk.red('[错误] 未找到 Inno Setup 编译器!'));
-            console.error(chalk.yellow('[提示] 请从官网 https://jrsoftware.org/isdl.php 或 ' +
-                '国内 https://gitee.com/OpenFlun/inno-setup/releases 下载,安装时务必选择默认目录;')), process.exit(1);
+            console.error(chalk.yellow('[提示] 手动下载:https://jrsoftware.org/isdl.php; 选择默认安装目录;')), process.exit(1);
         }
 
         const {
             appName: innoAppName, appVersion: innoVersion, appId: innoAppId, appPublisher, defaultDirName, defaultGroupName,
             shortcutName: innoShortcut, outputDir: innoOutputDir, outputBaseFilename
-        } = innoConfig, sourceDir = innoOutputDir || path.join(tempDir, 'Output'),
+        } = innoConfig, sourceDir = innoOutputDir || path.join(tempDir, 'Output'), appExe = path.join(appDir, exeName),
             issContent = await generateIssScript({
                 appName: innoAppName || appName,
                 appVersion: innoVersion || pkgVersion || '1.0.0',
@@ -418,7 +464,6 @@ const build = async () => {
         else console.warn(chalk.yellow('[警告] 未找到构建产物;'));
     }
 };
-
 /**
  * 运行命令行接口
  * >查看定义:@see {@link runCLI}
