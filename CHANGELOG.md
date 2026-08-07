@@ -1,5 +1,5 @@
 # 变更日志
-## [4.1.2] - 2026-08-05 19:24
+## [4.1.2] - 2026-08-07 16:12
 ### 修正
 - Windows下 'inno.versionInfoCompany' 字段默认值更正为从 package.json 读取 author
 - 其它细节优化修正;
