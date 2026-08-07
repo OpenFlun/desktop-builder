@@ -234,24 +234,20 @@ const build = async () => {
         // 生成 Inno Setup 脚本
         generateIssScript = async ({
             appName, appVersion, appId, publisher, appDir, outputDir, exeName, shortcutName, installDirName, outputBase,
-            groupName, versionInfoVersion, isccDir, inno = {}
+            groupName, unIcon, unName = `卸载(${appName})`, versionInfoVersion, isccDir, inno = {}
         }) => {
             const { createStartMenuShortcut, createDesktopShortcut, runAfterInstall, runDescription, ...remaining } = inno,
-                excludeKeys = ['AppId', 'AppName', 'AppPublisher', 'AppVersion', 'defaultDirName', 'defaultGroupName',
-                    'shortcutName', 'OutputDir', 'outputBaseFilename', 'versionInfoVersion'];
-            for (const key of excludeKeys) delete remaining[key]; // 排除已在外部特殊处理的字段
-
-            // 构建 [Setup] 节
-            const setupLines = [], addLine = (key, value) => {
-                if (value === undefined || value === null || value === '') return;
-                let strValue;
-                if (typeof value === 'boolean') strValue = value ? 'yes' : 'no';
-                else if (typeof value === 'string') strValue = /\s|\\|\//.test(value) ? `"${value}"` : value;
-                else if (typeof value === 'number') strValue = String(value);
-                else return;
-                setupLines.push(`${key}=${strValue}`);
-            };
-            // 显式处理必要字段
+                // 构建 [Setup] 节
+                setupLines = [], addLine = (key, value) => {
+                    if (value === undefined || value === null || value === '') return;
+                    let strValue;
+                    if (typeof value === 'boolean') strValue = value ? 'yes' : 'no';
+                    else if (typeof value === 'string') strValue = /\s|\\|\//.test(value) ? `"${value}"` : value;
+                    else if (typeof value === 'number') strValue = String(value);
+                    else return;
+                    setupLines.push(`${key}=${strValue}`);
+                };
+            // 显式处理必要字段和剩余字段
             addLine('AppId', appId);
             addLine('AppName', appName);
             addLine('AppPublisher', publisher);
@@ -261,7 +257,13 @@ const build = async () => {
             addLine('OutputDir', outputDir);
             addLine('OutputBaseFilename', outputBase);
             addLine('versionInfoVersion', versionInfoVersion || appVersion);
-            // 自动处理剩余字段
+            let filesSection = `Source: "${appDir}\\*"; DestDir: "{app}"; Flags: recursesubdirs`, uninstallDisplayIcon
+            if (unIcon) {
+                filesSection += `\nSource: "${unIcon}"; DestDir: "{app}"; Flags: ignoreversion`;
+                uninstallDisplayIcon = `{app}\\${path.basename(unIcon)}`;
+            }
+            else uninstallDisplayIcon = `{app}\\${exeName}`;
+            addLine('UninstallDisplayIcon', uninstallDisplayIcon);
             for (const [key, value] of Object.entries(remaining)) addLine(key, value);
             // 语言文件
             const langDir = path.join(isccDir, 'Languages');
@@ -284,22 +286,25 @@ const build = async () => {
             }
             else console.warn(chalk.yellow(`[警告] 语言目录不存在 (${langDir}),仅使用英文;`));
 
-            const langSection = `\n[Languages]\n${langEntries.join('\n')}`,
-                fileAndDir = `Filename: "{app}\\${exeName}"; WorkingDir: "{app}"`, sections = [], shortcutLocations = [];
-            sections.push(`[Setup]\n${setupLines.join('\n')}`), sections.push(langSection);
-            sections.push(`[Files]\nSource: "${appDir}\\*"; DestDir: "{app}"; Flags: recursesubdirs`);
+            const sections = [], shortcutLocations = [], runEntries = [], langSection = `\n[Languages]\n${langEntries.join('\n')}`,
+                fileAndDir = `Filename: "{app}\\${exeName}"; WorkingDir: "{app}"`, unFile = "{app}\\unins000.exe",
+                iconEntry = `Name: "{app}\\${unName}"; Filename: ${unFile}; IconFilename: "${uninstallDisplayIcon}"`,
+                hideCmd = `Filename: "{cmd}"; Parameters: "/c attrib +h ${unFile}"; Flags: runhidden waituntilterminated`;
 
             if (createStartMenuShortcut !== false) shortcutLocations.push('{group}');
             if (createDesktopShortcut !== false) shortcutLocations.push('{autodesktop}');
             if (shortcutLocations.length > 0) {
-                const iconEntries = shortcutLocations.map(loc => `Name: "${loc}\\${shortcutName}"; ${fileAndDir}`).join('\n');
-                sections.push(`[Icons]\n${iconEntries}`);
+                const iconEntries = shortcutLocations.map(loc => `Name: "${loc}\\${shortcutName}"; ${fileAndDir} `).join('\n');
+                sections.push(`[Icons]\n${iconEntries} `);
             }
             if (runAfterInstall !== false) {
                 const runEntry = `${fileAndDir}; Description: "${runDescription || `运行 ${appName}`}"; ` +
                     `Flags: postinstall nowait skipifsilent`;
-                sections.push(`[Run]\n${runEntry}`);
+                runEntries.push(runEntry);
             }
+            sections.push(`[Setup]\n${setupLines.join('\n')} `), sections.push(`[Files]\n${filesSection} `);
+            sections.push(langSection), sections.push(`[Icons]\n${iconEntry} `), runEntries.push(hideCmd);
+            sections.push(`[Run]\n${runEntries.join('\n')} `);
             // 卸载时用户数据处理
             sections.push(`[Code]
                 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -426,20 +431,20 @@ const build = async () => {
 
         const {
             appName: innoAppName, appVersion: innoVersion, appId: innoAppId, appPublisher, defaultDirName, defaultGroupName,
-            shortcutName: innoShortcut, outputDir: innoOutputDir, outputBaseFilename, versionInfoVersion
-        } = innoConfig, sourceDir = innoOutputDir || path.join(tempDir, 'Output'), appExe = path.join(appDir, exeName),
-            issContent = await generateIssScript({
+            shortcutName: innoShortcut, outputDir: innoOutputDir, outputBaseFilename, uninstallDisplayIcon: unIcon,
+            uninstallDisplayName, versionInfoVersion, ...inno } = innoConfig, appExe = path.join(appDir, exeName),
+            sourceDir = innoOutputDir || path.join(tempDir, 'Output'), issContent = await generateIssScript({
                 appName: innoAppName || appName,
                 appVersion: innoVersion || pkgVersion || '1.0.0',
                 appId: innoAppId || appId,
                 publisher: appPublisher || userPublisher || pkgAuthor || appName,
                 appDir, outputDir: sourceDir,
-                exeName: path.basename(appExe),
+                exeName: path.basename(appExe), unIcon,
                 installDirName: defaultDirName || `{localappdata}\\Programs\\${appName}`,
                 groupName: defaultGroupName || appName,
                 outputBase: outputBaseFilename || `${appName}Setup`,
-                shortcutName: innoShortcut || userShortcutName || appName, versionInfoVersion,
-                isccDir: path.dirname(isccPath), inno: innoConfig
+                shortcutName: innoShortcut || userShortcutName || appName, unName: uninstallDisplayName,
+                versionInfoVersion, isccDir: path.dirname(isccPath), inno
             }), issPath = path.join(tempDir, 'installer.iss');
         await fs.writeFile(issPath, issContent);
         try {

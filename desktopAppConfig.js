@@ -153,7 +153,7 @@ export default {
 			WizardImageBackColorDynamicDark: '#228866',	  	   // 向导样式为'dynamic'时深色模式下的左侧大图的背景色
 			WizardSmallImageBackColorDynamicDark: '#228866', 	   // 向导样式为'dynamic'时深色模式下的右上小图的背景色
 			WizardBackColorDynamicDark: '#228866', 	   		   // 向导样式为'dynamic'时深色模式下的背景色
-			WizardImageOpacity: 200,           					    // 图标不透明度(0-255)
+			// WizardImageOpacity: 200,           					// 图标不透明度(0-255)
 			// WizardBackImageOpacity: 200,						    // 背景图片的不透明度(0-255)
 			WizardImageStretch: true,         					    // 向导图片是否始终填充整个区域(默认true, false=保持原始大小且居中)
 
@@ -192,7 +192,7 @@ export default {
 			updateUninstallLogAppName: false, 	   // true=更新卸载日志中的应用名称
 			uninstallable: true,           	   	   // 是否可卸载
 			createUninstallRegKey: true,   	   	   // 是否创建卸载注册表项
-			uninstallDisplayName: '卸载(name)',    // 在“添加/删除程序”中显示的名称
+			uninstallDisplayName: '卸载(destApp)', // 在“添加/删除程序”中显示的名称
 			uninstallLogMode: 'append',       	   // 卸载日志模式:new / append / overwrite
 			appSupportURL: undefined,      	   	   // 支持网址
 			appUpdatesURL: undefined,      	   	   // 更新网址
@@ -203,7 +203,7 @@ export default {
 			versionInfoVersion: undefined, 	   	   // 文件版本信息(默认使用 inno.appVersion)
 			versionInfoDescription: undefined, 	   // 文件描述
 			versionInfoCopyright: undefined, 	   // 版权信息
-			versionInfoCompany: undefined, 		   // 公司名称(默认使用 `build.appName`)
+			versionInfoCompany: undefined, 		   // 公司名称(默认从 package.json 读取 author)
 			signedUninstaller: false,      		   // 是否为卸载程序签名
 			signingTool: undefined,        		   // 签名工具命令(如 signtool.exe)
 			signToolParams: undefined,     		   // 签名参数
