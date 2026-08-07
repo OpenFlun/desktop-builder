@@ -1,4 +1,8 @@
 # 变更日志
+## [4.1.3] - 2026-08-07 22:36
+### 修复
+- 修复了构建后安装成功时应用中心和控制面板,没有正确应用 'uninstallDisplayName' 字段值的问题;
+
 ## [4.1.2] - 2026-08-07 16:12
 ### 修正
 - Windows下 'inno.versionInfoCompany' 字段默认值更正为从 package.json 读取 author
@@ -28,9 +32,3 @@
 ### 修复
 - 修复了某些特殊场景下构建时报快捷方式配置错误的问题;
 - 修复了默认值不对的问题;
-
-## [4.1.0] - 2026-08-05 11:44
-### 新增
-- 新增自动下载 Inno Setup,下载存放位置:"C:\Users\你的用户名\.electron-builder-cache" 下;
-- 使用 Inno Setup 构建时,查找编译器顺序为->'C:\Users\你的用户名\.electron-builder-cache'->'C:\\Program Files'和'C:\\Program Files (x86)'
-**如果手动下载处理,请务必放在以上指定的位置**

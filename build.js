@@ -35,12 +35,10 @@ const build = async () => {
                 console.warn(chalk.yellow('[警告] allowScripts 配置错误或未配置,将使用默认值 { node: true }'));
                 return { node: true };
             })(); // allowScripts 预处理
-
     await fs.ensureDir(CACHE_DIR);
     process.env.ELECTRON_BUILDER_CACHE = CACHE_DIR, process.env.ELECTRON_CACHE = CACHE_DIR;
     const tempDir = path.join(os.tmpdir(), 'desktop-builder-build', path.basename(process.cwd()));
     await fs.ensureDir(tempDir);
-
     // 清理临时目录,保留 node_modules 和依赖快照
     const snapshotFile = '.deps-snapshot.json', items = await fs.readdir(tempDir).catch(() => []);
     for (const item of items) {
@@ -187,9 +185,8 @@ const build = async () => {
     if (!platformHandlers[platform]) console.error(chalk.red(`[错误] 不支持的操作系统: ${platform}`)), process.exit(1);
 
     const handlerResult = platformHandlers[platform](configObj, userWin, userMac, userDmg), platformArgs = handlerResult.args,
-        subDir = handlerResult.subDir, configFile = path.join(tempDir, 'builder.json');
+        subDir = handlerResult.subDir, appDir = path.join(output, subDir), configFile = path.join(tempDir, 'builder.json');
     await fs.writeJson(configFile, configObj, { spaces: 2 });
-
     // 构建可执行文件（electron-builder）
     let retries = 2, lastError = null, success = false;
     while (retries > 0) {
@@ -233,20 +230,21 @@ const build = async () => {
     },
         // 生成 Inno Setup 脚本
         generateIssScript = async ({
-            appName, appVersion, appId, publisher, appDir, outputDir, exeName, shortcutName, installDirName, outputBase,
-            groupName, unIcon, unName = `卸载(${appName})`, versionInfoVersion, isccDir, inno = {}
+            appName, appVersion, appId, createStartMenuShortcut, createDesktopShortcut, exeName, groupName, installDirName,
+            inno, isccDir, outputDir, outputBase, publisher, runAfterInstall, runDescription, shortcutName,
+            uninstallDisplayIcon, versionInfoVersion
         }) => {
-            const { createStartMenuShortcut, createDesktopShortcut, runAfterInstall, runDescription, ...remaining } = inno,
-                // 构建 [Setup] 节
-                setupLines = [], addLine = (key, value) => {
-                    if (value === undefined || value === null || value === '') return;
-                    let strValue;
-                    if (typeof value === 'boolean') strValue = value ? 'yes' : 'no';
-                    else if (typeof value === 'string') strValue = /\s|\\|\//.test(value) ? `"${value}"` : value;
-                    else if (typeof value === 'number') strValue = String(value);
-                    else return;
-                    setupLines.push(`${key}=${strValue}`);
-                };
+            // 构建 [Setup] 节
+            const setupLines = [], addLine = (key, value) => {
+                if (value === undefined || value === null || value === '') return;
+                let strValue;
+                if (typeof value === 'boolean') strValue = value ? 'yes' : 'no';
+                else if (typeof value === 'string') strValue = /\s|\\|\//.test(value) ? `"${value}"` : value;
+                else if (typeof value === 'number') strValue = String(value);
+                else return;
+                setupLines.push(`${key}=${strValue}`);
+            }, langDir = path.join(isccDir, 'Languages');
+            let langEntries = ['Name: "en"; MessagesFile: "compiler:Default.isl"'];
             // 显式处理必要字段和剩余字段
             addLine('AppId', appId);
             addLine('AppName', appName);
@@ -257,17 +255,15 @@ const build = async () => {
             addLine('OutputDir', outputDir);
             addLine('OutputBaseFilename', outputBase);
             addLine('versionInfoVersion', versionInfoVersion || appVersion);
-            let filesSection = `Source: "${appDir}\\*"; DestDir: "{app}"; Flags: recursesubdirs`, uninstallDisplayIcon
-            if (unIcon) {
-                filesSection += `\nSource: "${unIcon}"; DestDir: "{app}"; Flags: ignoreversion`;
-                uninstallDisplayIcon = `{app}\\${path.basename(unIcon)}`;
+            let filesSection = `Source: "${appDir}\\*"; DestDir: "{app}"; Flags: recursesubdirs`, unIcon
+            if (uninstallDisplayIcon) {
+                filesSection += `\nSource: "${uninstallDisplayIcon}"; DestDir: "{app}"; Flags: ignoreversion`;
+                unIcon = `{app}\\${path.basename(uninstallDisplayIcon)}`;
             }
-            else uninstallDisplayIcon = `{app}\\${exeName}`;
-            addLine('UninstallDisplayIcon', uninstallDisplayIcon);
-            for (const [key, value] of Object.entries(remaining)) addLine(key, value);
-            // 语言文件
-            const langDir = path.join(isccDir, 'Languages');
-            let langEntries = ['Name: "en"; MessagesFile: "compiler:Default.isl"'];
+            else unIcon = `{app}\\${exeName}`;
+            addLine('UninstallDisplayIcon', unIcon);
+            for (const [key, value] of Object.entries(inno)) addLine(key, value);
+            // 安装语言文件处理
             if (await fs.pathExists(langDir)) {
                 try {
                     const files = await fs.readdir(langDir);
@@ -286,9 +282,10 @@ const build = async () => {
             }
             else console.warn(chalk.yellow(`[警告] 语言目录不存在 (${langDir}),仅使用英文;`));
 
-            const sections = [], shortcutLocations = [], runEntries = [], langSection = `\n[Languages]\n${langEntries.join('\n')}`,
+            const unName = inno.uninstallDisplayName || `卸载(${appName})`, sections = [], shortcutLocations = [],
+                runEntries = [], langSection = `\n[Languages]\n${langEntries.join('\n')}`,
                 fileAndDir = `Filename: "{app}\\${exeName}"; WorkingDir: "{app}"`, unFile = "{app}\\unins000.exe",
-                iconEntry = `Name: "{app}\\${unName}"; Filename: ${unFile}; IconFilename: "${uninstallDisplayIcon}"`,
+                iconEntry = `Name: "{app}\\${unName}"; Filename: ${unFile}; IconFilename: "${unIcon}"`,
                 hideCmd = `Filename: "{cmd}"; Parameters: "/c attrib +h ${unFile}"; Flags: runhidden waituntilterminated`;
 
             if (createStartMenuShortcut !== false) shortcutLocations.push('{group}');
@@ -390,7 +387,7 @@ const build = async () => {
                 }
                 throw new Error('使用缓存构建无效');
             }
-        }, targetDir = path.resolve(process.cwd(), outputDir), appDir = path.join(output, subDir);
+        }, targetDir = path.resolve(process.cwd(), outputDir);
     // 平台打包
     if (platform === 'win32') {
         console.log(chalk.gray('正在执行 Inno Setup 编译(时间2~5分钟,请稍作休息)...'));
@@ -430,21 +427,17 @@ const build = async () => {
         }
 
         const {
-            appName: innoAppName, appVersion: innoVersion, appId: innoAppId, appPublisher, defaultDirName, defaultGroupName,
-            shortcutName: innoShortcut, outputDir: innoOutputDir, outputBaseFilename, uninstallDisplayIcon: unIcon,
-            uninstallDisplayName, versionInfoVersion, ...inno } = innoConfig, appExe = path.join(appDir, exeName),
-            sourceDir = innoOutputDir || path.join(tempDir, 'Output'), issContent = await generateIssScript({
-                appName: innoAppName || appName,
-                appVersion: innoVersion || pkgVersion || '1.0.0',
-                appId: innoAppId || appId,
-                publisher: appPublisher || userPublisher || pkgAuthor || appName,
-                appDir, outputDir: sourceDir,
-                exeName: path.basename(appExe), unIcon,
-                installDirName: defaultDirName || `{localappdata}\\Programs\\${appName}`,
-                groupName: defaultGroupName || appName,
-                outputBase: outputBaseFilename || `${appName}Setup`,
-                shortcutName: innoShortcut || userShortcutName || appName, unName: uninstallDisplayName,
-                versionInfoVersion, isccDir: path.dirname(isccPath), inno
+            appName: innoAppName, appVersion: innoVersion, appId: innoAppId, appPublisher, createStartMenuShortcut,
+            createDesktopShortcut, defaultDirName, defaultGroupName, shortcutName: innoShortcut, outputDir: innoOutputDir,
+            outputBaseFilename, runAfterInstall, runDescription, uninstallDisplayIcon, versionInfoVersion, ...inno
+        } = innoConfig, appExe = path.join(appDir, exeName), sourceDir = innoOutputDir || path.join(tempDir, 'Output'),
+            issContent = await generateIssScript({
+                appName: innoAppName || appName, appVersion: innoVersion || pkgVersion || '1.0.0', appId: innoAppId || appId,
+                createStartMenuShortcut, createDesktopShortcut, exeName: path.basename(appExe),
+                groupName: defaultGroupName || appName, installDirName: defaultDirName || `{localappdata}\\Programs\\${appName}`,
+                inno, isccDir: path.dirname(isccPath), outputBase: outputBaseFilename || `${appName}Setup`, outputDir: sourceDir,
+                publisher: appPublisher || userPublisher || pkgAuthor || appName, runAfterInstall, runDescription,
+                shortcutName: innoShortcut || userShortcutName || appName, uninstallDisplayIcon, versionInfoVersion
             }), issPath = path.join(tempDir, 'installer.iss');
         await fs.writeFile(issPath, issContent);
         try {
@@ -479,8 +472,6 @@ const runCLI = async () => {
     if (!command || command === 'help' || command === '--help' || command === '-h')
         console.log(`用法:先配置 desktopAppConfig.js 文件,然后运行->desktop-builder build 指令构建桌面应用程序`), process.exit(0);
     if (command === 'build') await build();
-    else {
-        console.error(`未知命令: ${command}`), console.log('请运行 "desktop-builder --help" 查看用法;'), process.exit(1);
-    }
+    else console.error(`未知命令: ${command}`), console.log('请运行 "desktop-builder --help" 查看用法;'), process.exit(1);
 };
 export { runCLI, build };
