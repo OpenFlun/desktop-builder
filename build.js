@@ -245,7 +245,7 @@ const build = async () => {
                 setupLines.push(`${key}=${strValue}`);
             }, langDir = path.join(isccDir, 'Languages');
             let langEntries = ['Name: "en"; MessagesFile: "compiler:Default.isl"'];
-            // 显式处理必要字段和剩余字段
+            // 显式处理特殊字段和剩余字段
             addLine('AppId', appId);
             addLine('AppName', appName);
             addLine('AppPublisher', publisher);
