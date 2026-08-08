@@ -130,17 +130,10 @@ const require = createRequire(import.meta.url), __dirname = path.dirname(fileURL
         const req = httpModule.get({
           hostname: ip, port: port, path: '/',
           rejectUnauthorized: false, timeout: 5000, family: 4
-        }, res => {
-          resolve(true), req.destroy();
-        });
+        }, res => { resolve(true), req.destroy() });
 
-        req.on('error', (err) => {
-          log('服务器尚未就绪: ' + err.message), setTimeout(check, 2000);
-        });
-
-        req.on('timeout', () => {
-          req.destroy(), setTimeout(check, 2000);
-        });
+        req.on('error', err => { log('服务器尚未就绪: ' + err.message), setTimeout(check, 2000) });
+        req.on('timeout', () => { req.destroy(), setTimeout(check, 2000) });
       };
       check();
     });
