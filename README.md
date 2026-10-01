@@ -221,11 +221,44 @@ build: {
   appId: 'com.example.app',           // 应用唯一标识（反向域名格式）
   outputDir: './dist',                // 安装包输出目录
 
+  // asar 打包:将应用代码归档为 app.asar,减少文件数量、加快加载(默认启用)
+  // asar.unpack:指定需解包到 app.asar.unpacked 的文件(如原生模块、可执行文件等)
+  // electron-builder v27 变更:ASAR 配置收拢到 asar 对象下,省略该字段即默认启用
+  asar: {
+    unpack: [
+      // 原生模块(.node)会被自动解包,通常无需手动添加
+      // 如需额外解包,填写 glob 模式,例如:
+      // '**/node_modules/sharp/**/*',
+      // '**/bin/**'
+    ],
+  },
+
+  // 原生模块配置
+  // npmRebuild: false = 不重编译原生模块,减少构建时间
+  // electron-builder v27 变更:原生模块选项统一收拢到 nativeModules 对象下
+  nativeModules: {
+    npmRebuild: false,
+  },
+
+  // 工具集配置:指定构建时使用的辅助工具版本
+  // wine: 'system' = 使用宿主机已安装的 Wine
+  // 用于在 macOS 上构建 Windows 目标,需先执行: brew install --cask wine-stable
+  // electron-builder v27 变更:显式锁定 wine 版本,避免默认值静默漂移
+  toolsets: {
+    wine: 'system',
+  },
+
   // ----- Windows 配置（electron-builder 部分）-----
   win: {
     // target 会自动加入 'dir',以确保生成 win-unpacked 目录供 Inno Setup 使用
     icon: './build/icon.png',         // 应用图标（建议 512×512 PNG）
-    // 其他可选：publisherName, signingHashAlgorithms 等
+    // 其他可选：publisherName 等
+    // Windows 代码签名配置（electron-builder v27: 统一移入 sign 对象）
+    // sign: {
+    //   certificateFile: './build/cert.pfx',
+    //   certificatePassword: process.env.CERT_PASSWORD,
+    //   signingHashAlgorithms: ['sha256'],
+    // },
   },
 
   // ----- Windows Inno Setup 配置（专用于生成安装程序）-----
@@ -329,12 +362,14 @@ build: {
   mac: {
     target: ['dmg', 'zip'],          // 同时生成 dmg 和 zip（zip 可用于自动更新）
     icon: './build/icon.icns',       // 应用图标,建议 512x512 .icns
-    // 可选高级字段（代码签名、entitlements 等）
-    // identity: 'Developer ID Application: Your Name (TEAM123)',
-    // hardenedRuntime: true,
-    // entitlements: './build/entitlements.mac.plist',
-    // entitlementsInherit: './build/entitlements.mac.inherit.plist',
-    // provisioningProfile: './build/profile.provisionprofile', // 仅 MAS 需要
+    // 代码签名配置（electron-builder v27: 统一移入 sign 对象）
+    // sign: {
+    //   identity: 'Developer ID Application: Your Name (TEAM123)',
+    //   hardenedRuntime: true,
+    //   entitlements: './build/entitlements.mac.plist',
+    //   entitlementsInherit: './build/entitlements.mac.inherit.plist',
+    //   provisioningProfile: './build/profile.provisionprofile', // 仅 MAS 需要
+    // },
   },
   dmg: {
     iconSize: 80,
@@ -372,7 +407,8 @@ build: {
     //     Type: 'Application'
     //   }
     // },
-    // syncDesktopName: true,        // 同步 .desktop 文件名与窗口类名,防止任务栏图标错乱
+    // electron-builder v27 变更: syncDesktopName 已被移除,行为变为始终同步 .desktop 文件名与窗口类名
+    // electron-builder v27 变更: executableArgs 会被注入 <executableName>-launcher 脚本,生成的 .desktop Exec 指向该脚本
   },
   // 特定格式的额外配置（可选）
   // appImage: { systemIntegration: 'doNotAsk' },
@@ -652,6 +688,34 @@ export default {
 ### 11. Windows 安装程序为什么使用 Inno Setup 而不是 NSIS？
 - 从 v4.0.0 起,Windows 安装程序改用 Inno Setup,因为它提供更强大的自定义能力和更现代的向导界面,并且安装速度极快;
 - 如果您仍需要 NSIS,可以考虑使用旧版本（v4.0.0以下）;
+
+### 12. 旧版 `desktopAppConfig.js` 在 `electron-builder` v27 下报错怎么办？
+
+从本包 **v5.0.0** 起,底层依赖的 **`electron-builder` 升级到 v27**,该版本对配置格式做了破坏性调整;如果你是从旧版本升级,或在旧项目上使用了本包,会看到类似报错：
+
+```
+Your configuration uses an option that was removed in electron-builder v27:
+
+`npmRebuild` was replaced by `nativeModules.npmRebuild` in electron-builder v27.
+```
+
+需要按以下对照表手动迁移你的 `desktopAppConfig.js`（本包 v5.0.0 自带的模板已按新格式编写,可直接参考）：
+
+| 旧格式（`electron-builder` v26） | 新格式（`electron-builder` v27） |
+|---|---|
+| `npmRebuild: false` | `nativeModules: { npmRebuild: false }` |
+| `asar: false` | `asar: { unpack: [...] }`（省略 `asar` 即默认启用） |
+| `asarUnpack: [...]` | `asar: { unpack: [...] }` |
+| `mac.identity` / `mac.hardenedRuntime` / `mac.entitlements` 等 | 统一移入 `mac.sign: { ... }` |
+| `linux.syncDesktopName` | 已移除,行为变为始终同步 `.desktop` 文件名与窗口类名 |
+
+也可以执行官方迁移命令自动改写配置：
+
+```bash
+npx electron-builder migrate-schema
+```
+
+> **说明**：此处的 v27 指的是 **`electron-builder`** 的 v27,不是本包或其他依赖包的版本;本包自身版本号为 `@flun/desktop-builder` 的 version 字段;
 ---
 
 ## 📄 许可证

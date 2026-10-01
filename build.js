@@ -149,7 +149,7 @@ const build = async () => {
             "!node_modules/node-linux*/**", "!node_modules/node-freebsd*/**", "!node_modules/node-sunos*/**",
             "!node_modules/node-aix*/**", ...userExcludePatterns
         ], output = path.join(tempDir, 'app'),
-        configObj = { files, asar: false, npmRebuild: false, electronVersion, appId, productName: appName, ...restBuild };
+        configObj = { files, asar: {}, nativeModules: { npmRebuild: false }, electronVersion, appId, productName: appName, ...restBuild };
     configObj.directories = { ...(configObj.directories || {}), output };
     // 平台特定配置（映射处理）
     const platform = process.platform,

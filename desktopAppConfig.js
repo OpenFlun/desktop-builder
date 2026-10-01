@@ -110,8 +110,32 @@ export default {
 		outputDir: './dist',               // 安装包输出目录
 		publisher: null,                   // 发布者名称（用于安装程序信息,默认从 package.json 读取 author）
 		shortcutName: null,       		   // 快捷方式名称（默认使用 build.appName）
-		asar: false,          			   // 不启用 asar 打包,启用可能导致某些依赖(如需要动态加载资源文件的模块)无法正常工作等
-		npmRebuild: false,    			   // 不启用原生模块重编译,默认关闭能减少构建时间
+		// asar 打包:将应用代码归档为 app.asar,减少文件数量、加快加载(默认启用)
+		// asar.unpack:指定需解包到 app.asar.unpacked 的文件(如原生模块、可执行文件等)
+		// electron-builder v27 变更:ASAR 配置收拢到 asar 对象下,省略该字段即默认启用
+		asar: {
+				unpack: [
+						// 原生模块(.node)会被自动解包,通常无需手动添加
+						// 如需额外解包,填写 glob 模式,例如:
+						// '**/node_modules/sharp/**/*',
+						// '**/bin/**'
+				],
+		},
+		// 原生模块配置
+		// npmRebuild: false = 不重编译原生模块,减少构建时间
+		// electron-builder v27 变更:原生模块选项统一收拢到 nativeModules 对象下
+		nativeModules: {
+			npmRebuild: false,
+		},
+
+		// 工具集配置:指定构建时使用的辅助工具版本
+		// wine: 'system' = 使用宿主机已安装的 Wine
+		// 用于在 macOS 上构建 Windows 目标,需先执行: brew install --cask wine-stable
+		// electron-builder v27 变更:显式锁定 wine 版本,避免默认值静默漂移
+		// macOS 上构建 Windows 目标时需宿主机安装 Wine: brew install --cask wine-stable
+		toolsets: {
+				wine: 'system',
+		},
 
 		// Win 平台配置
 		win: {
@@ -224,12 +248,16 @@ export default {
 		mac: {
 			target: ['zip', 'dmg'],          // 构建目标：dmg / zip / pkg / mas 等
 			icon: './build/icon.icns',       // 应用图标,建议 512x512 .icns
-			// 以下为可选高级字段（如需代码签名或 Mac App Store 发布,可取消注释并填写）
-			// identity: 'Developer ID Application: Your Name (TEAM123)', // 签名证书名称
-			// hardenedRuntime: true,        // 启用 Hardened Runtime
-			// entitlements: './build/entitlements.mac.plist', // 签名 entitlements 文件
-			// entitlementsInherit: './build/entitlements.mac.inherit.plist', // Helper 进程 entitlements
-			// provisioningProfile: './build/profile.provisionprofile', // 仅 MAS 需要
+				// 代码签名配置:启用后应用可通过 macOS Gatekeeper 验证
+				// 如需签名,取消注释并填写以下字段:
+				// electron-builder v27 变更:所有 macOS 签名选项统一移入 sign 对象
+				sign: {
+						// identity: 'Developer ID Application: Your Name (TEAM123)', // 签名证书名称
+						// hardenedRuntime: true,        // 启用 Hardened Runtime
+						// entitlements: './build/entitlements.mac.plist', // 签名 entitlements 文件
+						// entitlementsInherit: './build/entitlements.mac.inherit.plist', // Helper 进程 entitlements
+						// provisioningProfile: './build/profile.provisionprofile', // 仅 MAS 需要
+				},
 		},
 		// macOS DMG 选项
 		dmg: {
@@ -268,7 +296,9 @@ export default {
 			//     Type: 'Application'
 			//   }
 			// },
-			// syncDesktopName: true,        // 同步 .desktop 文件名与窗口类名,防止任务栏图标错乱
+				// Linux 启动器说明:所有 Linux 目标通过 <executableName>-launcher 脚本启动
+				// executableArgs 会被注入 launcher 脚本,生成的 .desktop Exec 指向该脚本
+				// electron-builder v27 变更:syncDesktopName 已被移除,行为变为始终同步 .desktop 文件名与窗口类名
 		},
 		// 特定格式的额外配置（可选）
 		// appImage: {
