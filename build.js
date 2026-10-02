@@ -1,4 +1,4 @@
-import fs from 'fs-extra';
+﻿import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
@@ -17,7 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
      * @param {string} name 签名工具名或路径
      * @returns {Promise<string|null>} 完整路径,找不到返回 null
      */
-    resolveSignTool = async (name) => {
+    resolveSignTool = async name => {
         if (!name) return null;
         if (/[\\/]/.test(name) || /^[a-zA-Z]:/.test(name)) return (await fs.pathExists(name)) ? name : null;
         try {
@@ -179,7 +179,7 @@ const build = async () => {
             "!node_modules/node-linux*/**", "!node_modules/node-freebsd*/**", "!node_modules/node-sunos*/**",
             "!node_modules/node-aix*/**", ...userExcludePatterns
         ], output = path.join(tempDir, 'app'), configObj = {
-            files, asar: {}, nativeModules: { npmRebuild: false }, electronVersion, appId,
+            files, asar: false, nativeModules: { npmRebuild: false }, electronVersion, appId,
             productName: appName, ...restBuild
         };
     configObj.directories = { ...(configObj.directories || {}), output };

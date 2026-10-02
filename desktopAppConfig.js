@@ -111,22 +111,9 @@ export default {
 		outputDir: './dist',               // 安装包输出目录
 		publisher: null,                   // 发布者名称（用于安装程序信息,默认从 package.json 读取 author）
 		shortcutName: null,       		   // 快捷方式名称（默认使用 appName）
-		// asar 打包:将应用代码归档为 app.asar,减少文件数量、加快加载(默认启用)
-		// asar.unpack:指定需解包到 app.asar.unpacked 的文件(如原生模块、可执行文件等)
-		// electron-builder v27 变更:ASAR 配置收拢到 asar 对象下,省略该字段即默认启用
-		asar: {
-			unpack: [
-				// 原生模块(.node)会被自动解包,通常无需手动添加
-				// 如需额外解包,填写 glob 模式,例如:
-				// '**/node_modules/sharp/**/*',
-				// '**/bin/**'
-			]
-		},
-		// 原生模块配置
-		// npmRebuild: false = 不重编译原生模块,减少构建时间
 		// electron-builder v27 变更:原生模块选项统一收拢到 nativeModules 对象下
 		nativeModules: {
-			npmRebuild: false,
+			npmRebuild: false               // 默认不重编译原生模块,减少构建时间
 		},
 
 		// 工具集配置:指定构建时使用的辅助工具版本
@@ -135,7 +122,7 @@ export default {
 		// electron-builder v27 变更:显式锁定 wine 版本,避免默认值静默漂移
 		// macOS 上构建 Windows 目标时需宿主机安装 Wine: brew install --cask wine-stable
 		toolsets: {
-			wine: 'system',
+			wine: 'system'
 		},
 
 		// Win 平台配置

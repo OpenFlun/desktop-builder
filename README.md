@@ -17,6 +17,13 @@
 - **Electron 本身内置了 Node.js 运行时**,因此打包后的应用在启动时,会使用**自带的 Node.js** 在后台自动运行您的服务脚本;
 - 最终用户**无需在电脑上安装 Node.js 或任何其他运行时环境**,双击桌面图标即可直接使用;
 
+**关于 asar 打包**：本工具**不支持也不建议启用** ASAR 打包（electron-builder 的 `asar` 配置）。原因如下：
+
+- 本工具的运行架构是「Electron 主进程 + 独立 Node.js 后端子进程」：主进程通过 `child_process.spawn` 启动一个外部 Node 进程来运行您的后端服务（`serverPath` 指定的脚本）；
+- 外部 Node 进程**不加载 Electron 的 fs 补丁**，无法读取 asar 归档内的文件；同时 asar 虚拟路径也**不能作为子进程的工作目录**（Windows 的 `CreateProcess` 会直接报 ENOENT）；
+- 因此启用 asar 后，后端服务会启动失败（表现为应用启动后立即退出、页面 `ERR_CONNECTION_REFUSED`）；
+- 本工具已在 `build.js` 中显式设置 `asar: false`，确保打包后的 `resources/app` 始终是真实目录结构。
+
 ---
 
 ## ✨ 特性
@@ -32,6 +39,33 @@
 - 🔧 **可扩展**：允许直接添加 `electron-builder` 任意配置字段;
 - 📦 **依赖预打包**：构建时自动判断是否安装生产依赖并打包进应用,用户**首次启动无需联网**,开箱即用;
 - 🎨 **主题切换支持**：通过菜单配置轻松切换浅色/深色/跟随系统主题;
+
+---
+
+## 📁 包结构
+
+安装后 `@flun/desktop-builder` 包内结构如下（也可参考项目根目录被自动复制出的文件）：
+
+```
+@flun/desktop-builder/
+├── build/                    # 默认资源（图标、安装向导图）
+│   ├── icon.png              # 应用图标（512×512 PNG，跨平台默认）
+│   ├── setup.ico             # Windows 安装程序图标
+│   ├── uninstallerIcon.ico   # Windows 卸载程序图标
+│   ├── wizard.bmp            # Inno Setup 左侧大图（164×314 BMP）
+│   └── wizardSmall.bmp       # Inno Setup 右上小图（55×58 BMP）
+├── build.js                  # 构建主逻辑（复制文件、安装依赖、electron-builder、Inno Setup 打包）
+├── copy-files.js             # postinstall 脚本：复制配置模板与 build/ 到项目根目录
+├── desktopAppConfig.js       # 配置文件模板（安装时复制到项目根目录）
+├── electron-main.js          # Electron 主进程模板（构建时替换占位符生成 main.mjs）
+├── index.js                  # CLI 入口（desktop-builder build / help）
+├── index.d.ts                # TypeScript 类型声明
+├── LICENSE
+├── CHANGELOG.md
+└── README.md
+```
+
+> **说明**：`postinstall` 会把 `desktopAppConfig.js` 和 `build/` 复制到项目根目录（若不存在），因此项目根目录下也会出现同名文件；后续修改请以项目根目录下的副本为准。
 
 ---
 
@@ -76,31 +110,6 @@ npm install -D @flun/desktop-builder
 
 安装完成后,`postinstall` 脚本会自动将 `desktopAppConfig.js` 配置文件模板以及 `build/` 目录（含默认图标等资源）复制到你的项目根目录（如果不存在）;
 
----
-## 📁 包结构
-
-安装后 `@flun/desktop-builder` 包内结构如下（也可参考项目根目录被自动复制出的文件）：
-
-```
-@flun/desktop-builder/
-├── build/                    # 默认资源（图标、安装向导图）
-│   ├── icon.png              # 应用图标（512×512 PNG，跨平台默认）
-│   ├── setup.ico             # Windows 安装程序图标
-│   ├── uninstallerIcon.ico   # Windows 卸载程序图标
-│   ├── wizard.bmp            # Inno Setup 左侧大图（164×314 BMP）
-│   └── wizardSmall.bmp       # Inno Setup 右上小图（55×58 BMP）
-├── build.js                  # 构建主逻辑（复制文件、安装依赖、electron-builder、Inno Setup 打包）
-├── copy-files.js             # postinstall 脚本：复制配置模板与 build/ 到项目根目录
-├── desktopAppConfig.js       # 配置文件模板（安装时复制到项目根目录）
-├── electron-main.js          # Electron 主进程模板（构建时替换占位符生成 main.mjs）
-├── index.js                  # CLI 入口（desktop-builder build / help）
-├── index.d.ts                # TypeScript 类型声明
-├── LICENSE
-├── CHANGELOG.md
-└── README.md
-```
-
-> **说明**：`postinstall` 会把 `desktopAppConfig.js` 和 `build/` 复制到项目根目录（若不存在），因此项目根目录下也会出现同名文件；后续修改请以项目根目录下的副本为准。
 ---
 
 ## 🚀 快速开始
@@ -250,18 +259,6 @@ build: {
   outputDir: './dist',                // 安装包输出目录
   publisher: null,                    // 发布者名称（默认从 package.json 读取 author）
   shortcutName: null,                 // 快捷方式名称（默认使用 appName）
-
-  // asar 打包:将应用代码归档为 app.asar,减少文件数量、加快加载(默认启用)
-  // asar.unpack:指定需解包到 app.asar.unpacked 的文件(如原生模块、可执行文件等)
-  // electron-builder v27 变更:ASAR 配置收拢到 asar 对象下,省略该字段即默认启用
-  asar: {
-    unpack: [
-      // 原生模块(.node)会被自动解包,通常无需手动添加
-      // 如需额外解包,填写 glob 模式,例如:
-      // '**/node_modules/sharp/**/*',
-      // '**/bin/**'
-    ],
-  },
 
   // 原生模块配置
   // npmRebuild: false = 不重编译原生模块,减少构建时间
@@ -635,11 +632,11 @@ build: {
 
 **环境变量兜底**：若用户未在配置中填写，`build.js` 会自动识别并注入以下环境变量给 `electron-builder`：
 
-| 配置字段 | 对应环境变量 | 说明 |
-|---|---|---|
+| 配置字段                                  | 对应环境变量                       | 说明             |
+| ----------------------------------------- | ---------------------------------- | ---------------- |
 | `sign.identity` 或 `sign.certificateFile` | `CSC_IDENTITY_AUTO_DISCOVERY=true` | 显式开启证书发现 |
-| `sign.certificateFile` | `CSC_LINK` | 证书文件路径 |
-| `sign.certificatePassword` | `CSC_KEY_PASSWORD` | 证书密码 |
+| `sign.certificateFile`                    | `CSC_LINK`                         | 证书文件路径     |
+| `sign.certificatePassword`                | `CSC_KEY_PASSWORD`                 | 证书密码         |
 
 #### 五、Linux 包签名 (`build.linux.sign`)
 
@@ -895,8 +892,6 @@ Your configuration uses an option that was removed in electron-builder v27:
 | 旧格式（`electron-builder` v26）                               | 新格式（`electron-builder` v27）                    |
 | -------------------------------------------------------------- | --------------------------------------------------- |
 | `npmRebuild: false`                                            | `nativeModules: { npmRebuild: false }`              |
-| `asar: false`                                                  | `asar: { unpack: [...] }`（省略 `asar` 即默认启用） |
-| `asarUnpack: [...]`                                            | `asar: { unpack: [...] }`                           |
 | `mac.identity` / `mac.hardenedRuntime` / `mac.entitlements` 等 | 统一移入 `mac.sign: { ... }`                        |
 | `linux.syncDesktopName`                                        | 已移除,行为变为始终同步 `.desktop` 文件名与窗口类名 |
 
