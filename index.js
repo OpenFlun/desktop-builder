@@ -1,6 +1,12 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 import { runCLI, build } from './build.js';
-import { pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import fs from 'fs';
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) await runCLI();
+let self = '', invoked = '';
+try { self = fs.realpathSync(fileURLToPath(import.meta.url)); } catch (_) {}
+try { if (process.argv[1]) invoked = fs.realpathSync(process.argv[1]); } catch (_) {}
+
+if (self && invoked && self.toLowerCase() === invoked.toLowerCase()) await runCLI();
 export { build };

@@ -77,6 +77,31 @@ npm install -D @flun/desktop-builder
 安装完成后,`postinstall` 脚本会自动将 `desktopAppConfig.js` 配置文件模板以及 `build/` 目录（含默认图标等资源）复制到你的项目根目录（如果不存在）;
 
 ---
+## 📁 包结构
+
+安装后 `@flun/desktop-builder` 包内结构如下（也可参考项目根目录被自动复制出的文件）：
+
+```
+@flun/desktop-builder/
+├── build/                    # 默认资源（图标、安装向导图）
+│   ├── icon.png              # 应用图标（512×512 PNG，跨平台默认）
+│   ├── setup.ico             # Windows 安装程序图标
+│   ├── uninstallerIcon.ico   # Windows 卸载程序图标
+│   ├── wizard.bmp            # Inno Setup 左侧大图（164×314 BMP）
+│   └── wizardSmall.bmp       # Inno Setup 右上小图（55×58 BMP）
+├── build.js                  # 构建主逻辑（复制文件、安装依赖、electron-builder、Inno Setup 打包）
+├── copy-files.js             # postinstall 脚本：复制配置模板与 build/ 到项目根目录
+├── desktopAppConfig.js       # 配置文件模板（安装时复制到项目根目录）
+├── electron-main.js          # Electron 主进程模板（构建时替换占位符生成 main.mjs）
+├── index.js                  # CLI 入口（desktop-builder build / help）
+├── index.d.ts                # TypeScript 类型声明
+├── LICENSE
+├── CHANGELOG.md
+└── README.md
+```
+
+> **说明**：`postinstall` 会把 `desktopAppConfig.js` 和 `build/` 复制到项目根目录（若不存在），因此项目根目录下也会出现同名文件；后续修改请以项目根目录下的副本为准。
+---
 
 ## 🚀 快速开始
 
@@ -258,13 +283,14 @@ build: {
     // target 会自动加入 'dir',以确保生成 win-unpacked 目录供 Inno Setup 使用
     icon: './build/icon.png',         // 应用图标（建议 512×512 PNG）
     // 其他可选：publisherName 等
-    // 应用本体签名（electron-builder v27: 统一移入 sign 对象）
+    // 应用本体签名（electron-builder v27: 统一移入 sign 对象,必须带 type 字段）
     // 签名对象：打包进安装包的应用可执行文件（与下方 inno 的签名字段职责不同）
     // sign: {
-    //   certificateFile: './build/cert.pfx',
-    //   certificatePassword: process.env.CERT_PASSWORD,
+    //   type: 'signtool',                                     // 必填,固定为 'signtool'(v27 判别字段)
+    //   certificateFile: './build/cert.pfx',                  // 证书文件路径(.pfx)
+    //   certificatePassword: process.env.CSC_KEY_PASSWORD,    // 证书密码(推荐用环境变量)
     //   signingHashAlgorithms: ['sha256'],
-    // }
+    // },
   },
 
   // ----- Windows Inno Setup 配置（专用于生成安装程序）-----
@@ -355,9 +381,15 @@ build: {
     versionInfoCompany: undefined,
     // 安装程序签名（Inno Setup 自身机制）
     // 签名对象：安装程序 Setup.exe 与卸载程序 unins000.exe（与上方 win.sign 职责不同）
-    signedUninstaller: false,
-    signingTool: undefined,
-    signToolParams: undefined,
+    // 公共说明：signingTool 与 signToolParams 需同时配置才会启用签名，缺少任一则不签名
+    signedUninstaller: false,                  // 是否为卸载程序签名
+    signingTool: undefined,                    // 签名工具（短名如 'signtool.exe' 自动查找，或完整路径）
+    signToolParams: undefined,                 // 签名参数（对象格式，仅需填 certificateFile/certificatePassword/algorithm 三项）
+    // signToolParams: {
+    //   certificateFile: 'D:\\build\\cert.pfx',
+    //   certificatePassword: 'your-password',
+    //   algorithm: 'sha256',
+    // },
     minVersion: '10.0.17763',            // 最低 Windows 版本
     onlyBelowVersion: '',
     useSetupLdr: true,
@@ -370,13 +402,16 @@ build: {
   mac: {
     target: ['dmg', 'zip'],          // 同时生成 dmg 和 zip（zip 可用于自动更新）
     icon: './build/icon.icns',       // 应用图标,建议 512x512 .icns
-    // 代码签名配置（electron-builder v27: 统一移入 sign 对象）
+    // 代码签名与公证配置（electron-builder v27: 统一移入 sign 对象）
+    // 公共说明: identity 与 certificateFile 二选一; certificatePassword 留空则自动读 CSC_KEY_PASSWORD
     // sign: {
-    //   identity: 'Developer ID Application: Your Name (TEAM123)',
-    //   hardenedRuntime: true,
-    //   entitlements: './build/entitlements.mac.plist',
-    //   entitlementsInherit: './build/entitlements.mac.inherit.plist',
-    //   provisioningProfile: './build/profile.provisionprofile', // 仅 MAS 需要
+    //   identity: 'Developer ID Application: Your Name (TEAM123)',  // 与 certificateFile 二选一
+    //   certificateFile: undefined,                                 // .p12 路径（与 identity 二选一）
+    //   certificatePassword: process.env.CSC_KEY_PASSWORD,          // 证书密码
+    //   hardenedRuntime: true,                                      // 启用 Hardened Runtime（公证必需）
+    //   entitlements: './build/entitlements.mac.plist',             // 需自备
+    //   entitlementsInherit: './build/entitlements.mac.inherit.plist', // 需自备
+    //   // notarize: { teamId: 'TEAM123', appleId: 'your@email.com', appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD },
     // },
   },
   dmg: {
@@ -417,6 +452,13 @@ build: {
     // },
     // electron-builder v27 变更: syncDesktopName 已被移除,行为变为始终同步 .desktop 文件名与窗口类名
     // electron-builder v27 变更: executableArgs 会被注入 <executableName>-launcher 脚本,生成的 .desktop Exec 指向该脚本
+    // 代码签名:GPG 签名(deb 通过 dpkg-sig,AppImage 通过 appimagetool)
+    // 公共说明:electron-builder 本身不签名 Linux 包,签名由底层工具完成;
+    //           需先在宿主机安装 GPG 密钥,推荐用环境变量传入密钥与密码
+    // sign: {
+    //   gpgPrivateKey: process.env.GPG_PRIVATE_KEY,       // GPG 私钥(ASCII-armored 内容)
+    //   gpgKeyPassphrase: process.env.GPG_KEY_PASSPHRASE, // GPG 密钥密码
+    // },
   },
   // 特定格式的额外配置（可选）
   // appImage: { systemIntegration: 'doNotAsk' },
@@ -492,6 +534,132 @@ excludeOutputs: [
 
 ---
 
+### 代码签名配置 (`build.win.sign` / `build.inno` / `build.mac.sign` / `build.linux.sign`)
+
+本工具已内置跨平台签名适配，**用户只需填写最少的字段，其余转义、拼接、查找、校验均由构建脚本自动完成**。
+
+#### 一、Windows 应用本体签名 (`build.win.sign`)
+
+`electron-builder` v27 要求 `win.sign` 必须带 `type` 判别字段，取消模板中的注释后按实际填写：
+
+```js
+build: {
+  win: {
+    icon: './build/icon.png',
+    sign: {
+      type: 'signtool',                                     // 必填，固定为 'signtool'
+      certificateFile: './build/cert.pfx',                  // 证书文件路径（.pfx）
+      certificatePassword: process.env.CSC_KEY_PASSWORD,    // 证书密码（推荐用环境变量）
+      signingHashAlgorithms: ['sha256'],
+    },
+  },
+}
+```
+
+- 环境变量 `CSC_KEY_PASSWORD` 需在构建前设置；
+- 该签名作用于打包后的应用可执行文件（如 `deskApp.exe`）及所有 `.exe` 附带程序（如 `lego.exe`）；
+- 不填 `win.sign` 时跳过签名，构建仍正常完成。
+
+#### 二、Windows 安装程序与卸载程序签名 (`build.inno`)
+
+`build.inno` 下三个字段只需填最基本的 3 项即可：
+
+```js
+build: {
+  inno: {
+    signedUninstaller: true,               // 是否同时为卸载程序 unins000.exe 签名
+    signingTool: 'signtool.exe',           // 签名工具：可填短名（自动查找）或完整路径
+    signToolParams: {                      // 对象格式，仅需 3 项
+      certificateFile: 'D:\\build\\cert.pfx',
+      certificatePassword: 'your-password',
+      algorithm: 'sha256',                 // 默认 sha256
+    },
+  },
+}
+```
+
+**自动兜底机制**：
+
+1. **`signingTool` 自动查找**：填 `'signtool.exe'` 时，构建脚本会按以下顺序查找完整路径：
+   - 若填的是绝对路径 → 直接验证存在性；
+   - 否则调用 `where signtool.exe` 查 `PATH`；
+   - 再依次扫描 `%ProgramFiles(x86)%\Windows Kits\10\bin\<版本>\<arch>\signtool.exe`（`x64` / `x86` / `arm64`，版本从高到低）。
+   - 全部失败时给出中文提示并终止，**不会静默使用错误的工具**。
+2. **`signToolParams` 对象自动拼接**：`build.js` 会自动拼成 `sign /f "证书" /p "密码" /fd 算法 $f`，并自动完成 Inno Setup 所需的 `$q` 引号转义，用户**无需关心任何转义字符**。
+3. **合法性校验**：
+   - `certificateFile` 必填，且文件必须存在；
+   - `signingTool` 解析出的工具名若含空白或 `=`，则报错退出（其他字符全部放行）。
+4. **`SignTool` 指令生成**：脚本自动将工具名写入 `.iss` 的 `[Setup]` 段，并通过 `/S<name>=...` 命令行参数向 ISCC 传入完整命令，符合 Inno Setup 官方规范。
+
+#### 三、生成自签名测试证书（仅用于本地验证）
+
+正式发布请使用受信任 CA 签发的代码签名证书。若只是想本地验证签名流程，可用 PowerShell 生成一张自签名的代码签名证书：
+
+```powershell
+$pwd = ConvertTo-SecureString -String "test123" -Force -AsPlainText
+$cert = New-SelfSignedCertificate `
+  -Type CodeSigningCert `
+  -Subject "CN=Test Code Signing" `
+  -CertStoreLocation Cert:\CurrentUser\My `
+  -NotAfter (Get-Date).AddYears(1)
+Export-PfxCertificate -Cert $cert -FilePath "D:\test\build\test-codesign.pfx" -Password $pwd
+```
+
+- `-Type CodeSigningCert` 必须带，否则证书 EKU 不含 Code Signing，`signtool` 会直接过滤掉；
+- 生成的 `.pfx` 可配合 `build.win.sign` 与 `build.inno.signToolParams` 使用；
+- 自签名证书**不被系统信任根**，`signtool verify` 时会提示 `A certificate chain processed, but terminated in a root`，这是预期结果。
+
+#### 四、macOS 签名与公证 (`build.mac.sign`)
+
+`mac.sign` 中的所有选项在 v27 已统一收拢到 `sign` 对象下，模板中已给出注释示例：
+
+```js
+build: {
+  mac: {
+    sign: {
+      identity: 'Developer ID Application: Your Name (TEAM123)',  // 与 certificateFile 二选一
+      certificateFile: undefined,                                 // .p12 路径
+      certificatePassword: process.env.CSC_KEY_PASSWORD,
+      hardenedRuntime: true,                                      // 公证必需
+      entitlements: './build/entitlements.mac.plist',
+      entitlementsInherit: './build/entitlements.mac.inherit.plist',
+      notarize: {                                                 // 自动公证（需 Apple 账号）
+        teamId: 'TEAM123',
+        appleId: 'your@email.com',
+        appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
+      },
+    },
+  },
+}
+```
+
+**环境变量兜底**：若用户未在配置中填写，`build.js` 会自动识别并注入以下环境变量给 `electron-builder`：
+
+| 配置字段 | 对应环境变量 | 说明 |
+|---|---|---|
+| `sign.identity` 或 `sign.certificateFile` | `CSC_IDENTITY_AUTO_DISCOVERY=true` | 显式开启证书发现 |
+| `sign.certificateFile` | `CSC_LINK` | 证书文件路径 |
+| `sign.certificatePassword` | `CSC_KEY_PASSWORD` | 证书密码 |
+
+#### 五、Linux 包签名 (`build.linux.sign`)
+
+`electron-builder` **本身不签名 Linux 包**，实际签名依赖底层工具：`deb` 通过 `dpkg-sig`、AppImage 通过 `appimagetool --sign`，均基于 GPG 密钥。模板中已给出注释示例：
+
+```js
+build: {
+  linux: {
+    sign: {
+      gpgPrivateKey: process.env.GPG_PRIVATE_KEY,       // GPG 私钥（ASCII-armored 内容）
+      gpgKeyPassphrase: process.env.GPG_KEY_PASSPHRASE, // GPG 密钥密码
+    },
+  },
+}
+```
+
+**环境变量兜底**：`build.js` 会自动把上述两项转换为 `GPG_PRIVATE_KEY` / `GPG_KEY_PASSPHRASE` 传给 `electron-builder`。使用前请确保宿主机已安装 `dpkg-sig`、`appimagetool` 及对应的 GPG 密钥。
+
+---
+
 ## 🖥️ 完整配置示例
 
 以下是一个包含所有常用配置的 `desktopAppConfig.js` 示例：
@@ -562,7 +730,17 @@ export default {
 
     mac: {
       target: ['dmg', 'zip'],
-      icon: './build/icon.icns',
+      // icon: './build/icon.icns',           // 需自备 .icns 文件
+      // 代码签名与公证配置(electron-builder v27: 统一移入 sign 对象)
+      // 公共说明:identity 与 certificateFile 二选一;certificatePassword 留空则自动读 CSC_KEY_PASSWORD
+      // sign: {
+      //   identity: 'Developer ID Application: Your Name (TEAM123)',
+      //   certificateFile: undefined,
+      //   certificatePassword: process.env.CSC_KEY_PASSWORD,
+      //   hardenedRuntime: true,
+      //   entitlements: './build/entitlements.mac.plist',
+      //   entitlementsInherit: './build/entitlements.mac.inherit.plist',
+      // },
     },
     dmg: {
       iconSize: 80,
@@ -577,6 +755,12 @@ export default {
       description: '一个功能强大的应用',
       maintainer: '我的名字 <my@email.com>',
       vendor: '我的公司',
+      // 代码签名:GPG 签名(deb 通过 dpkg-sig,AppImage 通过 appimagetool)
+      // 公共说明:需先在宿主机安装 GPG 密钥,推荐用环境变量传入
+      // sign: {
+      //   gpgPrivateKey: process.env.GPG_PRIVATE_KEY,
+      //   gpgKeyPassphrase: process.env.GPG_KEY_PASSPHRASE,
+      // },
     },
 
     // 额外 electron-builder 字段（示例）

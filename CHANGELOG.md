@@ -1,5 +1,30 @@
 # 变更日志
 
+## [5.1.0] - 2026-10-02 17:06
+### 新增
+- **Windows 代码签名完整适配**：
+  - `build.win.sign` 现在会正确传递给 `electron-builder`（此前 `win32` 处理器只合并了 `icon`，其余字段被丢弃）；electron-builder v27 要求 `win.sign` 必须带 `type: 'signtool'` 判别字段，模板已补充；
+  - `build.inno` 的安装程序签名改为对象格式，用户只需填 `certificateFile` / `certificatePassword` / `algorithm` 三项，`build.js` 自动拼接 `sign /f "证书" /p "密码" /fd 算法 $f` 并完成 Inno Setup 所需的 `$q` 转义；
+  - 新增 `resolveSignTool()` 兜底查找签名工具路径：支持完整路径、`PATH` 查找、`Windows Kits\10\bin\<版本>\<arch>` 扫描，全部失败时给出明确中文提示并终止；
+  - `SignTool` 指令生成符合 Inno Setup 官方规范（名称通过 `/S<name>=...` 命令行参数定义）；
+  - 签名工具名全字符放行，仅拦截含空白或 `=` 的非法名（不静默替换为 `signtool`）。
+- **macOS 签名环境变量兜底**：`darwin` 处理器会根据 `mac.sign` 自动注入 `CSC_IDENTITY_AUTO_DISCOVERY` / `CSC_LINK` / `CSC_KEY_PASSWORD` 环境变量给 `electron-builder`。
+- **Linux GPG 签名环境变量传递**：`linux` 处理器会根据 `linux.sign` 自动注入 `GPG_PRIVATE_KEY` / `GPG_KEY_PASSPHRASE` 环境变量给 `electron-builder`。
+
+### 修复
+- **CLI 入口在 Windows 上可能不触发**：`index.js` 原使用 `import.meta.url === pathToFileURL(process.argv[1]).href` 判断主模块，因盘符大小写差异或 `npm install file:` 生成的 junction 导致判断失败、静默退出（ExitCode 0 但无任何输出）；改用 `fs.realpathSync` 双向归一化 + 大小写不敏感比较。
+
+### 优化
+- **配置模板签名段全面规范化**：`desktopAppConfig.js` 的 `build.win.sign` / `build.inno` / `build.mac.sign` / `build.linux.sign` 统一为注释示例风格，硬编码路径（如 `icon.icns`、`entitlements` 文件）改为注释，避免用户未自备对应文件时构建报错。
+- **README 文档同步**：
+  - 新增「📁 包结构」一节，说明安装后包内目录；
+  - 新增「代码签名配置」一节（`build.win.sign` / `build.inno` / `build.mac.sign` / `build.linux.sign`），含自签名测试证书生成步骤；
+  - 更新「完整配置示例」中的 `win` / `inno` / `mac` / `linux` 签名段为最新格式。
+
+### 说明
+- Windows 签名需要有效的代码签名证书（EKU 含 Code Signing）；普通的 SSL/TLS 证书（如 Let's Encrypt 签发的 lego 证书）**不能用于代码签名**，`signtool` 会因 EKU 过滤导致失败；
+- macOS 签名需要 Apple Developer 账号；Linux 签名需要宿主机安装 GPG 密钥及 `dpkg-sig` / `appimagetool`。
+
 ## [5.0.1] - 2026-10-02 09:42
 ### 修复
 - **紧急修复**:修正配置示例中长期存在的字段层级错误——`advanced`、`allowScripts`、`excludeFiles`、`excludeDependencies`、`excludeOutputs` 五个自定义字段被错误地放在 `build` 对象内部,现移至配置对象顶层;

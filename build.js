@@ -9,7 +9,36 @@ import { minimatch } from 'minimatch';
 import AdmZip from 'adm-zip';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = createRequire(import.meta.url),
-    CACHE_DIR = path.join(os.homedir(), '.electron-builder-cache');
+    CACHE_DIR = path.join(os.homedir(), '.electron-builder-cache'),
+    /**
+     * 解析签名工具路径
+     * 用户可填: 完整路径 / 短名(如 signtool.exe)
+     * 查找顺序: 直接验证 -> PATH(where) -> Windows Kits\10\bin\<版本>\<arch>
+     * @param {string} name 签名工具名或路径
+     * @returns {Promise<string|null>} 完整路径,找不到返回 null
+     */
+    resolveSignTool = async (name) => {
+        if (!name) return null;
+        if (/[\\/]/.test(name) || /^[a-zA-Z]:/.test(name)) return (await fs.pathExists(name)) ? name : null;
+        try {
+            const { stdout } = await execa('where', [name], { reject: false });
+            if (stdout && stdout.trim()) return stdout.trim().split(/\r?\n/)[0].trim();
+        } catch (_) { }
+        const kitsRoot = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+            kitsBin = path.join(kitsRoot, 'Windows Kits', '10', 'bin');
+        if (await fs.pathExists(kitsBin)) {
+            try {
+                const versions = (await fs.readdir(kitsBin)).filter(v => /^\d/.test(v)).sort().reverse();
+                for (const v of versions) {
+                    for (const arch of ['x64', 'x86', 'arm64']) {
+                        const candidate = path.join(kitsBin, v, arch, name);
+                        if (await fs.pathExists(candidate)) return candidate;
+                    }
+                }
+            } catch (_) { }
+        }
+        return null;
+    };
 /**
  * 构建桌面应用程序(跨平台)
  * >查看定义:@see {@link build}
@@ -105,7 +134,8 @@ const build = async () => {
         const oldSnapshot = await fs.readJson(snapshotPath);
         if (JSON.stringify(oldSnapshot) === JSON.stringify(snapshotData)) {
             const nodeModulesPath = path.join(tempDir, 'node_modules');
-            if (await fs.pathExists(nodeModulesPath)) shouldInstall = false, console.log(chalk.gray('[信息] 依赖未变化,跳过安装'));
+            if (await fs.pathExists(nodeModulesPath))
+                shouldInstall = false, console.log(chalk.gray('[信息] 依赖未变化,跳过安装'));
         }
     }
     if (shouldInstall) {
@@ -148,8 +178,10 @@ const build = async () => {
             "!node_modules/node/**", "!node_modules/node-win*/**", "!node_modules/node-darwin*/**",
             "!node_modules/node-linux*/**", "!node_modules/node-freebsd*/**", "!node_modules/node-sunos*/**",
             "!node_modules/node-aix*/**", ...userExcludePatterns
-        ], output = path.join(tempDir, 'app'),
-        configObj = { files, asar: {}, nativeModules: { npmRebuild: false }, electronVersion, appId, productName: appName, ...restBuild };
+        ], output = path.join(tempDir, 'app'), configObj = {
+            files, asar: {}, nativeModules: { npmRebuild: false }, electronVersion, appId,
+            productName: appName, ...restBuild
+        };
     configObj.directories = { ...(configObj.directories || {}), output };
     // 平台特定配置（映射处理）
     const platform = process.platform,
@@ -163,7 +195,7 @@ const build = async () => {
                     if (!targets.includes('dir')) targets.push('dir');
                     cfg.win.target = targets;
                 }
-                if (!cfg.win.icon && userWinCfg?.icon) cfg.win.icon = userWinCfg.icon;
+                if (userWinCfg && typeof userWinCfg === 'object') Object.assign(cfg.win, userWinCfg);
                 return { args: ['--dir', '--win'], subDir: 'win-unpacked' };
             },
             darwin: (cfg, userMacCfg, userDmgCfg) => {
@@ -171,7 +203,14 @@ const build = async () => {
                 if (!cfg.mac.target) cfg.mac.target = ['dmg', 'zip'];
                 Object.assign(cfg.mac, userMacCfg || {});
                 cfg.dmg = { iconSize: 80, window: { width: 540, height: 380 }, ...cfg.dmg, ...userDmgCfg };
-                return { args: ['--mac'], subDir: '' };
+                const envExtra = {};
+                if (userMacCfg?.sign) {
+                    const s = userMacCfg.sign;
+                    if (s.certificateFile || s.identity) envExtra.CSC_IDENTITY_AUTO_DISCOVERY = 'true';
+                    if (s.certificateFile) envExtra.CSC_LINK = s.certificateFile;
+                    if (s.certificatePassword) envExtra.CSC_KEY_PASSWORD = s.certificatePassword;
+                }
+                return { args: ['--mac'], subDir: '', envExtra };
             },
             linux: (cfg, userLinuxCfg) => {
                 cfg.linux ??= {};
@@ -179,13 +218,20 @@ const build = async () => {
                 if (!cfg.linux.category) cfg.linux.category = 'Utility';
                 Object.assign(cfg.linux, userLinuxCfg || {});
                 if (!cfg.linux.icon && userLinuxCfg?.icon) cfg.linux.icon = userLinuxCfg.icon;
-                return { args: ['--linux'], subDir: '' };
+                const envExtra = {};
+                if (userLinuxCfg?.sign) {
+                    const s = userLinuxCfg.sign;
+                    if (s.gpgPrivateKey) envExtra.GPG_PRIVATE_KEY = s.gpgPrivateKey;
+                    if (s.gpgKeyPassphrase) envExtra.GPG_KEY_PASSPHRASE = s.gpgKeyPassphrase;
+                }
+                return { args: ['--linux'], subDir: '', envExtra };
             }
         };
     if (!platformHandlers[platform]) console.error(chalk.red(`[错误] 不支持的操作系统: ${platform}`)), process.exit(1);
 
     const handlerResult = platformHandlers[platform](configObj, userWin, userMac, userDmg), platformArgs = handlerResult.args,
-        subDir = handlerResult.subDir, appDir = path.join(output, subDir), configFile = path.join(tempDir, 'builder.json');
+        subDir = handlerResult.subDir, envExtra = handlerResult.envExtra || {}, appDir = path.join(output, subDir),
+        configFile = path.join(tempDir, 'builder.json');
     await fs.writeJson(configFile, configObj, { spaces: 2 });
     // 构建可执行文件（electron-builder）
     let retries = 2, lastError = null, success = false;
@@ -202,7 +248,8 @@ const build = async () => {
                         ELECTRON_MIRROR: 'https://npmmirror.com/mirrors/electron/',
                         ELECTRON_BUILDER_BINARIES_MIRROR: 'https://registry.npmmirror.com/-/binary/electron-builder-binaries/',
                         ELECTRON_BUILDER_CACHE: CACHE_DIR,
-                        CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+                        CSC_IDENTITY_AUTO_DISCOVERY: 'false',
+                        ...envExtra
                     }
                 }
             ), success = true;
@@ -232,7 +279,7 @@ const build = async () => {
         generateIssScript = async ({
             appName, appVersion, appId, createStartMenuShortcut, createDesktopShortcut, exeName, groupName, installDirName,
             inno, isccDir, outputDir, outputBase, publisher, runAfterInstall, runDescription, shortcutName,
-            uninstallDisplayIcon, versionInfoVersion
+            uninstallDisplayIcon, versionInfoVersion, signingToolName, signedUninstaller
         }) => {
             // 构建 [Setup] 节
             const setupLines = [], addLine = (key, value) => {
@@ -263,11 +310,17 @@ const build = async () => {
             else unIcon = `{app}\\${exeName}`;
             addLine('UninstallDisplayIcon', unIcon);
             for (const [key, value] of Object.entries(inno)) addLine(key, value);
+
+            // 签名配置:SignTool 只写工具名,命令通过 ISCC /S 参数定义
+            if (signingToolName) {
+                setupLines.push(`SignTool=${signingToolName}`);
+                setupLines.push(`SignedUninstaller=${signedUninstaller === false ? 'no' : 'yes'}`);
+            }
             // 安装语言文件处理
             if (await fs.pathExists(langDir)) {
                 try {
-                    const files = await fs.readdir(langDir);
-                    const langFiles = files.filter(f => f.endsWith('.isl') && f !== 'Default.isl');
+                    const files = await fs.readdir(langDir),
+                        langFiles = files.filter(f => f.endsWith('.isl') && f !== 'Default.isl');
                     if (langFiles.length > 0) {
                         const otherEntries = langFiles.map(f => {
                             const name = f.replace(/\.isl$/, '');
@@ -429,19 +482,49 @@ const build = async () => {
         const {
             appName: innoAppName, appVersion: innoVersion, appId: innoAppId, appPublisher, createStartMenuShortcut,
             createDesktopShortcut, defaultDirName, defaultGroupName, shortcutName: innoShortcut, outputDir: innoOutputDir,
-            outputBaseFilename, runAfterInstall, runDescription, uninstallDisplayIcon, versionInfoVersion, ...inno
-        } = innoConfig, appExe = path.join(appDir, exeName), sourceDir = innoOutputDir || path.join(tempDir, 'Output'),
+            outputBaseFilename, runAfterInstall, runDescription, uninstallDisplayIcon, versionInfoVersion, signedUninstaller,
+            signingTool: _st, signToolParams: _stp, ...inno
+        } = innoConfig;
+
+        // 签名配置规范化
+        let signingToolName = '', signingToolPath = '', signToolParams = innoConfig.signToolParams;
+        if (innoConfig.signingTool) {
+            const originalSignTool = innoConfig.signingTool;
+            signingToolPath = await resolveSignTool(originalSignTool);
+            if (!signingToolPath) {
+                console.error(chalk.red(`[错误] 找不到签名工具: ${originalSignTool}`));
+                console.error(chalk.yellow('[提示] 请填写完整路径,或安装 Windows SDK(含 signtool.exe)')), process.exit(1);
+            }
+            signingToolName = path.basename(signingToolPath);
+            if (/[=\s]/.test(signingToolName)) { console.error(chalk.red('[错误] 签名工具名不合法:' + signingToolName)); process.exit(1); }
+            if (signToolParams && typeof signToolParams === 'object' && !Array.isArray(signToolParams)) {
+                const { certificateFile, certificatePassword = '', algorithm = 'sha256' } = signToolParams;
+                if (!certificateFile) console.error(chalk.red('[错误] signToolParams.certificateFile 必填')), process.exit(1);
+                if (!(await fs.pathExists(certificateFile)))
+                    console.error(chalk.red(`[错误] 证书文件不存在: ${certificateFile}`)), process.exit(1);
+                signToolParams = `sign /f "${certificateFile}" /p "${certificatePassword}" /fd ${algorithm} $f`;
+            }
+        }
+
+        const appExe = path.join(appDir, exeName), sourceDir = innoOutputDir || path.join(tempDir, 'Output'),
             issContent = await generateIssScript({
                 appName: innoAppName || appName, appVersion: innoVersion || pkgVersion || '1.0.0', appId: innoAppId || appId,
                 createStartMenuShortcut, createDesktopShortcut, exeName: path.basename(appExe),
                 groupName: defaultGroupName || appName, installDirName: defaultDirName || `{localappdata}\\Programs\\${appName}`,
                 inno, isccDir: path.dirname(isccPath), outputBase: outputBaseFilename || `${appName}Setup`, outputDir: sourceDir,
                 publisher: appPublisher || userPublisher || pkgAuthor || appName, runAfterInstall, runDescription,
-                shortcutName: innoShortcut || userShortcutName || appName, uninstallDisplayIcon, versionInfoVersion
+                shortcutName: innoShortcut || userShortcutName || appName, uninstallDisplayIcon, versionInfoVersion,
+                signingToolName, signedUninstaller
             }), issPath = path.join(tempDir, 'installer.iss');
         await fs.writeFile(issPath, issContent);
         try {
-            await execa(isccPath, ['/Q', issPath], { cwd: tempDir, stdio: 'inherit', env: process.env });
+            const isccArgs = ['/Q'];
+            if (signingToolName && signingToolPath && signToolParams) {
+                const toolPathEscaped = signingToolPath.replace(/"/g, '$q'), paramsEscaped = signToolParams.replace(/"/g, '$q');
+                isccArgs.push(`/S${signingToolName}=$q${toolPathEscaped}$q ${paramsEscaped}`);
+            }
+            isccArgs.push(issPath);
+            await execa(isccPath, isccArgs, { cwd: tempDir, stdio: 'inherit', env: process.env, windowsVerbatimArguments: false });
         } catch (error) {
             console.error(chalk.red('[错误] Inno Setup 打包失败:'), error), process.exit(1);
         }

@@ -142,13 +142,15 @@ export default {
 		win: {
 			icon: './build/icon.png',      // 应用图标（.png 格式）,用于快捷方式和文件图标,建议 512x512 PNG
 			// 其他可选：publisherName 等
-			// 应用本体签名（electron-builder v27: 统一移入 sign 对象）
-			// 签名对象：打包进安装包的应用可执行文件（与下方 inno 的签名字段职责不同）
+			// 应用本体签名(electron-builder v27: 统一移入 sign 对象,必须带 type 字段)
+			// 签名对象:打包进安装包的应用可执行文件(与下方 inno 的签名字段职责不同)
+			// 公共说明:如需签名,取消下方注释并按实际填写;certificatePassword 推荐用环境变量 CSC_KEY_PASSWORD 传入
 			// sign: {
-			//   certificateFile: './build/cert.pfx',
-			//   certificatePassword: process.env.CERT_PASSWORD,
-			//   signingHashAlgorithms: ['sha256'],
-			// }
+			//     type: 'signtool',                             // 必填,固定为 'signtool'(v27 判别字段)
+			//     certificateFile: './build/cert.pfx',           // 证书文件路径(.pfx)
+			//     certificatePassword: process.env.CSC_KEY_PASSWORD, // 证书密码(推荐用环境变量)
+			//     signingHashAlgorithms: ['sha256'],             // 签名算法
+			// },
 		},
 		// Win Inno Setup(基于7.0.2版本) 选项
 		inno: {
@@ -243,9 +245,15 @@ export default {
 			versionInfoCompany: undefined, 		   // 公司名称(默认从 package.json 读取 author)
 			// 安装程序签名（Inno Setup 自身机制）
 			// 签名对象：安装程序 Setup.exe 与卸载程序 unins000.exe（与上方 win.sign 职责不同）
-			signedUninstaller: false,      		   // 是否为卸载程序签名
-			signingTool: undefined,        		   // 签名工具命令(如 signtool.exe)
-			signToolParams: undefined,     		   // 签名参数
+			// 公共说明:signingTool 与 signToolParams 需同时配置才会启用签名,缺少任一则不签名
+			signedUninstaller: false,                  // 是否为卸载程序签名(true=同时对卸载程序 unins000.exe 签名)
+			signingTool: undefined,                    // 签名工具(可填 'signtool.exe' 自动查找,或完整路径如 'C:\\...\\signtool.exe')
+			signToolParams: undefined,                 // 签名参数(对象格式,仅需填 certificateFile/certificatePassword/algorithm 三项)
+			// signToolParams: {                       // 示例:三项填好后自动拼成 signtool 命令行
+			//     certificateFile: 'D:\\build\\cert.pfx', // 证书文件路径(.pfx)
+			//     certificatePassword: 'your-password',   // 证书密码
+			//     algorithm: 'sha256',                    // 签名算法(默认 sha256)
+			// },
 			// 系统要求与架构
 			minVersion: '10.0.17763',              // 最低 Windows 版本(这里设为 Win10 1809+,可调整)
 			onlyBelowVersion: '',          		   // 限制最高可运行的版本(如 '6.2' 表示不能运行在 Win8 及以上)
@@ -258,17 +266,25 @@ export default {
 		// macOS 配置
 		mac: {
 			target: ['zip', 'dmg'],          // 构建目标：dmg / zip / pkg / mas 等
-			icon: './build/icon.icns',       // 应用图标,建议 512x512 .icns
-			// 代码签名配置:启用后应用可通过 macOS Gatekeeper 验证
-			// 如需签名,取消注释并填写以下字段:
+			// icon: './build/icon.icns',       // 应用图标(.icns,需自备,建议 512x512)
+			// 代码签名与公证配置:启用后应用可通过 macOS Gatekeeper 验证
+			// 公共说明:identity 与 certificateFile 二选一;certificatePassword 留空则自动读 CSC_KEY_PASSWORD;
+			//           certificateFile 留空则自动读 CSC_LINK;identity 留空则自动读 CSC_NAME 环境变量
 			// electron-builder v27 变更:所有 macOS 签名选项统一移入 sign 对象
-			sign: {
-				// identity: 'Developer ID Application: Your Name (TEAM123)', // 签名证书名称
-				// hardenedRuntime: true,        // 启用 Hardened Runtime
-				// entitlements: './build/entitlements.mac.plist', // 签名 entitlements 文件
-				// entitlementsInherit: './build/entitlements.mac.inherit.plist', // Helper 进程 entitlements
-				// provisioningProfile: './build/profile.provisionprofile', // 仅 MAS 需要
-			},
+			// sign: {
+			//     identity: 'Developer ID Application: Your Name (TEAM123)',  // 签名证书名称(与 certificateFile 二选一)
+			//     certificateFile: undefined,                                 // 证书文件路径(.p12,与 identity 二选一)
+			//     certificatePassword: process.env.CSC_KEY_PASSWORD,          // 证书密码(推荐用环境变量)
+			//     hardenedRuntime: true,                                      // 启用 Hardened Runtime(公证必需)
+			//     entitlements: './build/entitlements.mac.plist',             // 签名 entitlements 文件(需自备)
+			//     entitlementsInherit: './build/entitlements.mac.inherit.plist', // Helper 进程 entitlements(需自备)
+			//     // 公证配置:如需自动公证,取消注释并填写(需 Apple Developer 账号)
+			//     // notarize: {
+			//     //     teamId: 'TEAM123',
+			//     //     appleId: 'your@email.com',
+			//     //     appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
+			//     // },
+			// },
 		},
 		// macOS DMG 选项
 		dmg: {
@@ -305,11 +321,18 @@ export default {
 			//     Keywords: 'app;tool;',
 			//     Terminal: false,
 			//     Type: 'Application'
-			//   }
+			// },
 			// },
 			// Linux 启动器说明:所有 Linux 目标通过 <executableName>-launcher 脚本启动
 			// executableArgs 会被注入 launcher 脚本,生成的 .desktop Exec 指向该脚本
 			// electron-builder v27 变更:syncDesktopName 已被移除,行为变为始终同步 .desktop 文件名与窗口类名
+			// 代码签名:GPG 签名(deb 通过 dpkg-sig,AppImage 通过 appimagetool)
+			// 公共说明:electron-builder 本身不签名 Linux 包,签名由底层工具完成;
+			//           需先在宿主机安装 GPG 密钥,推荐用环境变量传入密钥与密码
+			// sign: {
+			//     gpgPrivateKey: process.env.GPG_PRIVATE_KEY,       // GPG 私钥(ASCII-armored 内容)
+			//     gpgKeyPassphrase: process.env.GPG_KEY_PASSPHRASE, // GPG 密钥密码
+			// },
 		},
 		// 特定格式的额外配置（可选）
 		// appImage: {
@@ -317,7 +340,7 @@ export default {
 		// },
 		// deb: {
 		//   depends: ['libgtk-3-0']        // deb 包的依赖
-		// }
+		// },
 	},
 
 	// 高级选项
