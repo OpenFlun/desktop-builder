@@ -1,5 +1,5 @@
 /**
- * 桌面APP打包配置文件
+ * 桌面APP打包配置
  * ```ps
  * npx desktop-builder build # 构建桌面应用安装包
  * npx desktop-builder help  # 查看帮助
