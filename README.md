@@ -54,6 +54,8 @@
 
 > 如果你信任所有安装包,也可以直接在项目 `.npmrc` 中设置 `allow-scripts = false`（表示关闭脚本拦截,所有脚本均允许执行）,或删除 `allow-script` 字段;
 
+> 另外，`desktopAppConfig.js` 中的顶层 `allowScripts` 用于构建阶段安装生产依赖时放行指定包名的安装脚本，与上面的 npm 安装脚本放行场景不同。
+
 ### 下载依赖(Windows)
   - 官网:https://jrsoftware.org/isdl.php
   - 国内 https://gitee.com/OpenFlun/inno-setup/releases
@@ -124,6 +126,7 @@ await build();
 | `menu`                | `array`    | 见示例   | 应用菜单模板（支持角色、分隔符、点击回调）                                      |
 | `build`               | `object`   | 见下方   | 打包输出配置（可随意添加 `electron-builder` 支持的其他字段）                    |
 | `advanced`            | `object`   | 见下方   | 高级运行行为                                                                    |
+| `allowScripts`        | `object`   | `{}`     | 允许执行安装脚本的包名列表（构建阶段使用）                                      |
 | `excludeFiles`        | `string[]` | `[]`     | 复制到临时目录时排除的文件/目录（支持 glob）,**同时会追加到打包阶段的排除规则** |
 | `excludeDependencies` | `string[]` | `[]`     | 从最终依赖列表中移除的 npm 包名（不会打包）                                     |
 | `excludeOutputs`      | `string[]` | `[]`     | 从最终输出目录中排除的安装包文件（如 `*.blockmap`、`latest.yml`）               |
@@ -145,7 +148,7 @@ window: {
   alwaysOnTop: false,             // 是否始终置顶
   frame: true,                    // 是否显示窗口边框（标题栏、关闭按钮）
   titleBarStyle: 'default',       // 标题栏样式：'default' | 'hidden' | 'hiddenInset'（仅 macOS）
-  backgroundColor: '#ffffff',     // 加载时的背景色
+  backgroundColor: '#5127ce',     // 加载时的背景色
   show: false,                    // 是否立即显示窗口（false 可等页面渲染后再显示,防白屏）
   webPreferences: {
     // ⚠️ 以下三项会被强制覆盖,配置无效（实际运行值以强制为准）：
@@ -220,6 +223,8 @@ menu: [
 build: {
   appId: 'com.example.app',           // 应用唯一标识（反向域名格式）
   outputDir: './dist',                // 安装包输出目录
+  publisher: null,                    // 发布者名称（默认从 package.json 读取 author）
+  shortcutName: null,                 // 快捷方式名称（默认使用 appName）
 
   // asar 打包:将应用代码归档为 app.asar,减少文件数量、加快加载(默认启用)
   // asar.unpack:指定需解包到 app.asar.unpacked 的文件(如原生模块、可执行文件等)
@@ -253,18 +258,19 @@ build: {
     // target 会自动加入 'dir',以确保生成 win-unpacked 目录供 Inno Setup 使用
     icon: './build/icon.png',         // 应用图标（建议 512×512 PNG）
     // 其他可选：publisherName 等
-    // Windows 代码签名配置（electron-builder v27: 统一移入 sign 对象）
+    // 应用本体签名（electron-builder v27: 统一移入 sign 对象）
+    // 签名对象：打包进安装包的应用可执行文件（与下方 inno 的签名字段职责不同）
     // sign: {
     //   certificateFile: './build/cert.pfx',
     //   certificatePassword: process.env.CERT_PASSWORD,
     //   signingHashAlgorithms: ['sha256'],
-    // },
+    // }
   },
 
   // ----- Windows Inno Setup 配置（专用于生成安装程序）-----
   inno: {
     // 基础信息
-    appName: undefined,               // 应用显示名称（默认使用 build.appName）
+    appName: undefined,               // 应用显示名称（默认使用 appName）
     appVersion: undefined,            // 版本号（默认从 package.json 读取 version）
     appPublisher: undefined,          // 发布者（默认使用 build.publisher 或 package.json author）
     appId: undefined,                 // 应用唯一标识（默认使用 build.appId）
@@ -335,7 +341,7 @@ build: {
     updateUninstallLogAppName: false,
     uninstallable: true,
     createUninstallRegKey: true,
-    uninstallDisplayName: '卸载(name)',
+    uninstallDisplayName: '卸载(destApp)',
     uninstallLogMode: 'append',
     appSupportURL: undefined,
     appUpdatesURL: undefined,
@@ -347,6 +353,8 @@ build: {
     versionInfoDescription: undefined,
     versionInfoCopyright: undefined,
     versionInfoCompany: undefined,
+    // 安装程序签名（Inno Setup 自身机制）
+    // 签名对象：安装程序 Setup.exe 与卸载程序 unins000.exe（与上方 win.sign 职责不同）
     signedUninstaller: false,
     signingTool: undefined,
     signToolParams: undefined,
@@ -390,7 +398,7 @@ build: {
   linux: {
     target: ['AppImage', 'deb'],     // 可同时生成多种格式：AppImage / deb / rpm / snap / flatpak 等
     category: 'Development',         // 系统菜单分类（如 Utility, Network, Development 等）
-    icon: './build/icon.png',        // 应用图标（建议 512×512 PNG）
+    // Linux 图标无需显式配置，只需在 ./build 目录下提供符合尺寸和格式的 icon.png（建议 512×512 PNG）
     // 可选高级字段
     // description: '完整的应用描述',
     // synopsis: '简短描述',
@@ -566,7 +574,6 @@ export default {
     linux: {
       target: ['AppImage', 'deb'],
       category: 'Development',
-      icon: './build/icon.png',
       description: '一个功能强大的应用',
       maintainer: '我的名字 <my@email.com>',
       vendor: '我的公司',
@@ -701,13 +708,13 @@ Your configuration uses an option that was removed in electron-builder v27:
 
 需要按以下对照表手动迁移你的 `desktopAppConfig.js`（本包 v5.0.0 自带的模板已按新格式编写,可直接参考）：
 
-| 旧格式（`electron-builder` v26） | 新格式（`electron-builder` v27） |
-|---|---|
-| `npmRebuild: false` | `nativeModules: { npmRebuild: false }` |
-| `asar: false` | `asar: { unpack: [...] }`（省略 `asar` 即默认启用） |
-| `asarUnpack: [...]` | `asar: { unpack: [...] }` |
-| `mac.identity` / `mac.hardenedRuntime` / `mac.entitlements` 等 | 统一移入 `mac.sign: { ... }` |
-| `linux.syncDesktopName` | 已移除,行为变为始终同步 `.desktop` 文件名与窗口类名 |
+| 旧格式（`electron-builder` v26）                               | 新格式（`electron-builder` v27）                    |
+| -------------------------------------------------------------- | --------------------------------------------------- |
+| `npmRebuild: false`                                            | `nativeModules: { npmRebuild: false }`              |
+| `asar: false`                                                  | `asar: { unpack: [...] }`（省略 `asar` 即默认启用） |
+| `asarUnpack: [...]`                                            | `asar: { unpack: [...] }`                           |
+| `mac.identity` / `mac.hardenedRuntime` / `mac.entitlements` 等 | 统一移入 `mac.sign: { ... }`                        |
+| `linux.syncDesktopName`                                        | 已移除,行为变为始终同步 `.desktop` 文件名与窗口类名 |
 
 也可以执行官方迁移命令自动改写配置：
 

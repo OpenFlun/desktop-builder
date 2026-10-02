@@ -25,7 +25,7 @@ export default {
 		fullscreenable: true,             // 是否允许全屏
 		alwaysOnTop: false,               // 是否始终置顶
 		frame: true,                      // 是否显示标题栏
-		titleBarStyle: 'default',         // 标题栏样式: default/hidden/hiddenInset
+		titleBarStyle: 'default',         // 标题栏样式: default/hidden/hiddenInset（仅 macOS）
 		backgroundColor: '#5127ce',     // 加载时的背景色
 		show: false,                      // false=等页面渲染完再显示,防白屏
 		webPreferences: {
@@ -33,6 +33,7 @@ export default {
 			// 其他属性（如 plugins, webSecurity, enableWebAuthn 等）仍然生效
 			nodeIntegration: false,        // 此值无效,实际强制为 true
 			contextIsolation: true,        // 此值无效,实际强制为 false
+			sandbox: false,                // 此值无效,实际强制为 false
 		},
 	},
 
@@ -109,7 +110,7 @@ export default {
 		appId: 'com.example.app',     	   // 应用唯一标识（反向域名格式）
 		outputDir: './dist',               // 安装包输出目录
 		publisher: null,                   // 发布者名称（用于安装程序信息,默认从 package.json 读取 author）
-		shortcutName: null,       		   // 快捷方式名称（默认使用 build.appName）
+		shortcutName: null,       		   // 快捷方式名称（默认使用 appName）
 		// asar 打包:将应用代码归档为 app.asar,减少文件数量、加快加载(默认启用)
 		// asar.unpack:指定需解包到 app.asar.unpacked 的文件(如原生模块、可执行文件等)
 		// electron-builder v27 变更:ASAR 配置收拢到 asar 对象下,省略该字段即默认启用
@@ -139,19 +140,27 @@ export default {
 
 		// Win 平台配置
 		win: {
-			icon: './build/icon.png'      // 应用图标（.png 格式）,用于快捷方式和文件图标,建议 512x512 PNG
+			icon: './build/icon.png',      // 应用图标（.png 格式）,用于快捷方式和文件图标,建议 512x512 PNG
+			// 其他可选：publisherName 等
+			// 应用本体签名（electron-builder v27: 统一移入 sign 对象）
+			// 签名对象：打包进安装包的应用可执行文件（与下方 inno 的签名字段职责不同）
+			// sign: {
+			//   certificateFile: './build/cert.pfx',
+			//   certificatePassword: process.env.CERT_PASSWORD,
+			//   signingHashAlgorithms: ['sha256'],
+			// }
 		},
 		// Win Inno Setup(基于7.0.2版本) 选项
 		inno: {
 			// 基础信息
-			appName: undefined,            // 应用显示名称(默认使用 build.appName)
+			appName: undefined,            // 应用显示名称(默认使用 appName)
 			appVersion: undefined,         // 版本号(默认从 package.json 读取 version)
 			appPublisher: undefined,       // 发布者(默认使用 build.publisher)
 			appId: undefined,              // 应用唯一标识(默认使用 build.appId)
-			defaultDirName: null, 		   // 默认安装目录,支持变量:{autopf}, {pf}, {app}等(如'D:\\MyApp';默认使用 build.appName)
-			defaultGroupName: undefined,   // 开始菜单文件夹名(默认使用 build.appName)
+			defaultDirName: null, 		   // 默认安装目录,支持变量:{autopf}, {pf}, {app}等(如'D:\\MyApp'),默认使用 appName
+			defaultGroupName: undefined,   // 开始菜单文件夹名(默认使用 appName)
 			outputDir: undefined,          // 输出目录(默认使用 build.outputDir)
-			outputBaseFilename: undefined, // 安装包文件名(默认 <build.appName>Setup.exe)
+			outputBaseFilename: undefined, // 安装包文件名(默认 <appName>Setup.exe)
 
 			// 界面控制
 			disableWelcomePage: false,      // true=跳过欢迎页
@@ -232,6 +241,8 @@ export default {
 			versionInfoDescription: undefined, 	   // 文件描述
 			versionInfoCopyright: undefined, 	   // 版权信息
 			versionInfoCompany: undefined, 		   // 公司名称(默认从 package.json 读取 author)
+			// 安装程序签名（Inno Setup 自身机制）
+			// 签名对象：安装程序 Setup.exe 与卸载程序 unins000.exe（与上方 win.sign 职责不同）
 			signedUninstaller: false,      		   // 是否为卸载程序签名
 			signingTool: undefined,        		   // 签名工具命令(如 signtool.exe)
 			signToolParams: undefined,     		   // 签名参数
@@ -279,7 +290,7 @@ export default {
 		linux: {
 			target: ['AppImage', 'deb'],     // 构建目标：AppImage / deb / rpm / snap / flatpak 等
 			category: 'Development',         // 系统菜单分类（如 Utility, Network, Development 等）
-			// Linux 图标不用显示配置只需在./build目录下有符合尺寸和格式的默认图标 icon.png即可（建议 512x512 PNG）
+			// Linux 图标无需显式配置，只需在 ./build 目录下提供符合尺寸和格式的默认图标 icon.png 即可（建议 512x512 PNG）
 			// 以下为可选高级字段
 			// description: '完整的应用描述',   // 长描述
 			// synopsis: '简短描述',           // 短描述
