@@ -1,5 +1,5 @@
 /**
- * @flun/desktop-builder 配置文件
+ * 桌面APP打包配置文件
  * ```ps
  * npx desktop-builder build # 构建桌面应用安装包
  * npx desktop-builder help  # 查看帮助
@@ -114,12 +114,12 @@ export default {
 		// asar.unpack:指定需解包到 app.asar.unpacked 的文件(如原生模块、可执行文件等)
 		// electron-builder v27 变更:ASAR 配置收拢到 asar 对象下,省略该字段即默认启用
 		asar: {
-				unpack: [
-						// 原生模块(.node)会被自动解包,通常无需手动添加
-						// 如需额外解包,填写 glob 模式,例如:
-						// '**/node_modules/sharp/**/*',
-						// '**/bin/**'
-				],
+			unpack: [
+				// 原生模块(.node)会被自动解包,通常无需手动添加
+				// 如需额外解包,填写 glob 模式,例如:
+				// '**/node_modules/sharp/**/*',
+				// '**/bin/**'
+			]
 		},
 		// 原生模块配置
 		// npmRebuild: false = 不重编译原生模块,减少构建时间
@@ -134,7 +134,7 @@ export default {
 		// electron-builder v27 变更:显式锁定 wine 版本,避免默认值静默漂移
 		// macOS 上构建 Windows 目标时需宿主机安装 Wine: brew install --cask wine-stable
 		toolsets: {
-				wine: 'system',
+			wine: 'system',
 		},
 
 		// Win 平台配置
@@ -248,16 +248,16 @@ export default {
 		mac: {
 			target: ['zip', 'dmg'],          // 构建目标：dmg / zip / pkg / mas 等
 			icon: './build/icon.icns',       // 应用图标,建议 512x512 .icns
-				// 代码签名配置:启用后应用可通过 macOS Gatekeeper 验证
-				// 如需签名,取消注释并填写以下字段:
-				// electron-builder v27 变更:所有 macOS 签名选项统一移入 sign 对象
-				sign: {
-						// identity: 'Developer ID Application: Your Name (TEAM123)', // 签名证书名称
-						// hardenedRuntime: true,        // 启用 Hardened Runtime
-						// entitlements: './build/entitlements.mac.plist', // 签名 entitlements 文件
-						// entitlementsInherit: './build/entitlements.mac.inherit.plist', // Helper 进程 entitlements
-						// provisioningProfile: './build/profile.provisionprofile', // 仅 MAS 需要
-				},
+			// 代码签名配置:启用后应用可通过 macOS Gatekeeper 验证
+			// 如需签名,取消注释并填写以下字段:
+			// electron-builder v27 变更:所有 macOS 签名选项统一移入 sign 对象
+			sign: {
+				// identity: 'Developer ID Application: Your Name (TEAM123)', // 签名证书名称
+				// hardenedRuntime: true,        // 启用 Hardened Runtime
+				// entitlements: './build/entitlements.mac.plist', // 签名 entitlements 文件
+				// entitlementsInherit: './build/entitlements.mac.inherit.plist', // Helper 进程 entitlements
+				// provisioningProfile: './build/profile.provisionprofile', // 仅 MAS 需要
+			},
 		},
 		// macOS DMG 选项
 		dmg: {
@@ -296,9 +296,9 @@ export default {
 			//     Type: 'Application'
 			//   }
 			// },
-				// Linux 启动器说明:所有 Linux 目标通过 <executableName>-launcher 脚本启动
-				// executableArgs 会被注入 launcher 脚本,生成的 .desktop Exec 指向该脚本
-				// electron-builder v27 变更:syncDesktopName 已被移除,行为变为始终同步 .desktop 文件名与窗口类名
+			// Linux 启动器说明:所有 Linux 目标通过 <executableName>-launcher 脚本启动
+			// executableArgs 会被注入 launcher 脚本,生成的 .desktop Exec 指向该脚本
+			// electron-builder v27 变更:syncDesktopName 已被移除,行为变为始终同步 .desktop 文件名与窗口类名
 		},
 		// 特定格式的额外配置（可选）
 		// appImage: {
@@ -306,52 +306,52 @@ export default {
 		// },
 		// deb: {
 		//   depends: ['libgtk-3-0']        // deb 包的依赖
-		// },
+		// }
+	},
 
-		// 高级选项
-		advanced: {
-			autoStartServer: true,           // 是否自动启动后端服务
-			autoKillServer: true             // 退出时是否自动关闭后端
-		},
+	// 高级选项
+	advanced: {
+		autoStartServer: true,           // 是否自动启动后端服务
+		autoKillServer: true             // 退出时是否自动关闭后端
+	},
 
-		// 允许执行安装脚本的包名列表
-		allowScripts: {
-			'node': true,
-			'@flun/webauthn-server': true
-		},
+	// 允许执行安装脚本的包名列表
+	allowScripts: {
+		'node': true,
+		'@flun/webauthn-server': true
+	},
 
-		// 排除文件/目录（相对于项目根目录,支持 glob 模式）
-		excludeFiles: [
-			'.vscode/',
-			'.idea/',
-			'.git/',
-			'.hintrc',
-			'.greenlockrc',
-			'dist/',
-			'docs/',
-			'temp/',
-			'tests/',
-			'./yarn.lock',
-			'./desktop.ini',
-			'./desktopAppConfig.js',
-			'./package-lock.json',
-			'*.tgz',
-			'*.log'
-		],
+	// 排除文件/目录（相对于项目根目录,支持 glob 模式）
+	excludeFiles: [
+		'.vscode/',
+		'.idea/',
+		'.git/',
+		'.hintrc',
+		'.greenlockrc',
+		'dist/',
+		'docs/',
+		'temp/',
+		'tests/',
+		'./yarn.lock',
+		'./desktop.ini',
+		'./desktopAppConfig.js',
+		'./package-lock.json',
+		'*.tgz',
+		'*.log'
+	],
 
-		// 排除依赖包（从最终依赖列表中移除,不会安装）
-		excludeDependencies: [
-			'@flun/desktop-builder'
-		],
+	// 排除依赖包（从最终依赖列表中移除,不会安装）
+	excludeDependencies: [
+		'@flun/desktop-builder'
+	],
 
-		/**
-		 * 排除输出文件（在最终输出目录中排除某些安装包文件）
-		 * 例如 *.blockmap、latest.yml 等;
-		 * 注意：此配置仅在复制最终安装包到输出目录时生效,不影响构建过程;
-		 */
-		excludeOutputs: [
-			'*.blockmap',
-			'latest.yml'
-		]
-	}
+	/**
+	 * 排除输出文件（在最终输出目录中排除某些安装包文件）
+	 * 例如 *.blockmap、latest.yml 等;
+	 * 注意：此配置仅在复制最终安装包到输出目录时生效,不影响构建过程;
+	 */
+	excludeOutputs: [
+		'*.blockmap',
+		'latest.yml'
+	]
 };
