@@ -1,4 +1,4 @@
-﻿import fs from 'fs-extra';
+import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
@@ -10,6 +10,12 @@ import AdmZip from 'adm-zip';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = createRequire(import.meta.url),
     CACHE_DIR = path.join(os.homedir(), '.electron-builder-cache'),
+    /**
+     * 判断是否为非空普通对象(排除 null/数组/字符串等)
+     * @param {*} v 待判断的值
+     * @returns {boolean}
+     */
+    isNonEmptyObj = v => !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0,
     /**
      * 解析签名工具路径
      * 用户可填: 完整路径 / 短名(如 signtool.exe)
@@ -38,6 +44,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
             } catch (_) { }
         }
         return null;
+    },
+    /**
+     * 解析证书文件路径(相对→绝对)并校验存在性
+     * @param {string} certificateFile 证书文件路径
+     * @returns {Promise<string|null>} 绝对路径;未配置返回 null;不存在则报错退出
+     */
+    resolveCertFile = async certificateFile => {
+        if (!certificateFile) return null;
+        const absPath = path.isAbsolute(certificateFile) ? certificateFile : path.resolve(process.cwd(), certificateFile);
+        if (!(await fs.pathExists(absPath)))
+            console.error(chalk.red('[' + '错误' + '] 证书文件不存在: ' + absPath)), process.exit(1);
+        return absPath;
     };
 /**
  * 构建桌面应用程序(跨平台)
@@ -56,6 +74,40 @@ const build = async () => {
             advanced: userAdvanced = {}, build: buildConfig = {}
         } = configModule.default;
     if (!serverPath || !appUrl) console.error(chalk.red('[错误] 配置文件缺少必填字段: serverPath, appUrl')), process.exit(1);
+    // 早期配置校验(避免用户等待后才发现配置错误)
+    if (process.platform === 'win32') {
+        const winSign = buildConfig.win?.sign;
+        if (winSign) {
+            if (!winSign.type) {
+                console.error(chalk.red('[错误] build.win.sign.type 必填(electron-builder v27 判别字段,固定为 "signtool")'));
+                process.exit(1);
+            }
+            if (!winSign.certificateFile && !winSign.identity) {
+                console.error(chalk.red('[错误] 请配置 build.win.sign 中的 certificateFile 或 identity 字段'));
+                process.exit(1);
+            }
+            if (winSign.certificateFile) winSign.certificateFile = await resolveCertFile(winSign.certificateFile);
+        }
+        const innoCfg = buildConfig.inno || {}, innoSignParams = innoCfg.signToolParams,
+            hasSigningTool = !!innoCfg.signingTool, hasSignToolParams = isNonEmptyObj(innoSignParams);
+        if (hasSigningTool !== hasSignToolParams) {
+            console.error(chalk.red('[错误] build.inno 的 signingTool 与 signToolParams 必须同时配置'));
+            if (hasSigningTool) console.error(chalk.yellow(`[提示] 已配置 signingTool,但缺少 signToolParams(
+                    对象格式:certificateFile/certificatePassword/algorithm)`));
+            else console.error(chalk.yellow('[提示] 已配置 signToolParams,但缺少 signingTool(如 signtool.exe 或完整路径)'));
+            process.exit(1);
+        }
+        if (hasSigningTool) {
+            const toolPath = await resolveSignTool(innoCfg.signingTool);
+            if (!toolPath) {
+                console.error(chalk.red('[错误] 找不到签名工具: ' + innoCfg.signingTool));
+                console.error(chalk.yellow('[提示] 请填写完整路径,或安装 Windows SDK(含 signtool.exe)')), process.exit(1);
+            }
+            const certFile = innoSignParams.certificateFile;
+            if (!certFile) console.error(chalk.red('[错误] signToolParams.certificateFile 必填')), process.exit(1);
+            await resolveCertFile(certFile);
+        }
+    }
 
     const origPkg = await fs.readJson(origPkgPath), { name: pkgName, version: pkgVersion, author: pkgAuthor } = origPkg,
         appName = userAppName || pkgName || 'deskApp',
@@ -229,9 +281,9 @@ const build = async () => {
         };
     if (!platformHandlers[platform]) console.error(chalk.red(`[错误] 不支持的操作系统: ${platform}`)), process.exit(1);
 
-    const handlerResult = platformHandlers[platform](configObj, userWin, userMac, userDmg), platformArgs = handlerResult.args,
-        subDir = handlerResult.subDir, envExtra = handlerResult.envExtra || {}, appDir = path.join(output, subDir),
-        configFile = path.join(tempDir, 'builder.json');
+    const handlerResult = await platformHandlers[platform](configObj, userWin, userMac, userDmg),
+        platformArgs = handlerResult.args, subDir = handlerResult.subDir, envExtra = handlerResult.envExtra || {},
+        appDir = path.join(output, subDir), configFile = path.join(tempDir, 'builder.json');
     await fs.writeJson(configFile, configObj, { spaces: 2 });
     // 构建可执行文件（electron-builder）
     let retries = 2, lastError = null, success = false;
@@ -486,26 +538,15 @@ const build = async () => {
             signingTool: _st, signToolParams: _stp, ...inno
         } = innoConfig;
 
-        // 签名配置规范化
+        // 签名配置规范化(校验已在 build 开头完成,此处仅做拼接)
         let signingToolName = '', signingToolPath = '', signToolParams = innoConfig.signToolParams;
         if (innoConfig.signingTool) {
-            const originalSignTool = innoConfig.signingTool;
-            signingToolPath = await resolveSignTool(originalSignTool);
-            if (!signingToolPath) {
-                console.error(chalk.red(`[错误] 找不到签名工具: ${originalSignTool}`));
-                console.error(chalk.yellow('[提示] 请填写完整路径,或安装 Windows SDK(含 signtool.exe)')), process.exit(1);
-            }
+            signingToolPath = await resolveSignTool(innoConfig.signingTool);
             signingToolName = path.basename(signingToolPath);
-            if (/[=\s]/.test(signingToolName)) { console.error(chalk.red('[错误] 签名工具名不合法:' + signingToolName)); process.exit(1); }
-            if (signToolParams && typeof signToolParams === 'object' && !Array.isArray(signToolParams)) {
-                const { certificateFile, certificatePassword = '', algorithm = 'sha256' } = signToolParams;
-                if (!certificateFile) console.error(chalk.red('[错误] signToolParams.certificateFile 必填')), process.exit(1);
-                if (!(await fs.pathExists(certificateFile)))
-                    console.error(chalk.red(`[错误] 证书文件不存在: ${certificateFile}`)), process.exit(1);
-                signToolParams = `sign /f "${certificateFile}" /p "${certificatePassword}" /fd ${algorithm} $f`;
-            }
+            const { certificateFile, certificatePassword = '', algorithm = 'sha256' } = signToolParams,
+                certAbs = await resolveCertFile(certificateFile);
+            signToolParams = `sign /f "${certAbs}" /p "${certificatePassword}" /fd ${algorithm} $f`;
         }
-
         const appExe = path.join(appDir, exeName), sourceDir = innoOutputDir || path.join(tempDir, 'Output'),
             issContent = await generateIssScript({
                 appName: innoAppName || appName, appVersion: innoVersion || pkgVersion || '1.0.0', appId: innoAppId || appId,

@@ -1,4 +1,12 @@
 ﻿# 变更日志
+## [5.1.3] - 2026-10-03 11:57
+### 优化
+- **签名配置早期校验(构建前)**：将 `build.win.sign` 与 `build.inno` 签名的所有配置校验提前到构建开始前(复制文件之前),任何配置错误均在 **1 秒内**报错退出,用户不再需要等几分钟打包完成才发现配置错误;
+  - `build.win.sign`: 校验 `type` 必填(缺失时报 `[错误] build.win.sign.type 必填(...)`)、`certificateFile` 与 `identity` 至少配置一个(缺失时报 `[错误] 请配置 build.win.sign 中的 certificateFile 或 identity 字段`)、`certificateFile` 文件必须存在;
+  - `build.inno`: 校验 `signingTool` 与 `signToolParams` 必须同时配置(只配其一时报 `[错误] build.inno 的 signingTool 与 signToolParams 必须同时配置` 并提示缺哪个)、`signingTool` 必须能解析出完整路径(找不到时报 `[错误] 找不到签名工具: <名称>`)、`signToolParams.certificateFile` 必填且文件存在;
+  - 新增 `resolveCertFile()` 函数:统一处理证书路径绝对化(相对路径基于项目根目录解析)与文件存在性校验;
+- **简化 `win32` 与 `inno` 分支**:校验逻辑已提前到构建开头,`win32` 分支不再重复校验,`inno` 签名规范化块仅保留命令行拼接。
+
 ## [5.1.2] - 2026-10-03 09:01
 ### 优化
 - 优化配置模板和说明文件的配置示例
@@ -14,28 +22,3 @@
 
 ### 优化
 - **README 新增「为何禁用 ASAR」说明**：在「简介」章节说明 asar 的设计用途、与 Node 后端子进程的冲突点，以及本工具选择禁用 asar 的决策依据。
-
-## [5.1.0] - 2026-10-02 17:06
-### 新增
-- **Windows 代码签名完整适配**：
-  - `build.win.sign` 现在会正确传递给 `electron-builder`（此前 `win32` 处理器只合并了 `icon`，其余字段被丢弃）；electron-builder v27 要求 `win.sign` 必须带 `type: 'signtool'` 判别字段，模板已补充；
-  - `build.inno` 的安装程序签名改为对象格式，用户只需填 `certificateFile` / `certificatePassword` / `algorithm` 三项，`build.js` 自动拼接 `sign /f "证书" /p "密码" /fd 算法 $f` 并完成 Inno Setup 所需的 `$q` 转义；
-  - 新增 `resolveSignTool()` 兜底查找签名工具路径：支持完整路径、`PATH` 查找、`Windows Kits\10\bin\<版本>\<arch>` 扫描，全部失败时给出明确中文提示并终止；
-  - `SignTool` 指令生成符合 Inno Setup 官方规范（名称通过 `/S<name>=...` 命令行参数定义）；
-  - 签名工具名全字符放行，仅拦截含空白或 `=` 的非法名（不静默替换为 `signtool`）。
-- **macOS 签名环境变量兜底**：`darwin` 处理器会根据 `mac.sign` 自动注入 `CSC_IDENTITY_AUTO_DISCOVERY` / `CSC_LINK` / `CSC_KEY_PASSWORD` 环境变量给 `electron-builder`。
-- **Linux GPG 签名环境变量传递**：`linux` 处理器会根据 `linux.sign` 自动注入 `GPG_PRIVATE_KEY` / `GPG_KEY_PASSPHRASE` 环境变量给 `electron-builder`。
-
-### 修复
-- **CLI 入口在 Windows 上可能不触发**：`index.js` 原使用 `import.meta.url === pathToFileURL(process.argv[1]).href` 判断主模块，因盘符大小写差异或 `npm install file:` 生成的 junction 导致判断失败、静默退出（ExitCode 0 但无任何输出）；改用 `fs.realpathSync` 双向归一化 + 大小写不敏感比较。
-
-### 优化
-- **配置模板签名段全面规范化**：`desktopAppConfig.js` 的 `build.win.sign` / `build.inno` / `build.mac.sign` / `build.linux.sign` 统一为注释示例风格，硬编码路径（如 `icon.icns`、`entitlements` 文件）改为注释，避免用户未自备对应文件时构建报错。
-- **README 文档同步**：
-  - 新增「📁 包结构」一节，说明安装后包内目录；
-  - 新增「代码签名配置」一节（`build.win.sign` / `build.inno` / `build.mac.sign` / `build.linux.sign`），含自签名测试证书生成步骤；
-  - 更新「完整配置示例」中的 `win` / `inno` / `mac` / `linux` 签名段为最新格式。
-
-### 说明
-- Windows 签名需要有效的代码签名证书（EKU 含 Code Signing）；普通的 SSL/TLS 证书（如 Let's Encrypt 签发的 lego 证书）**不能用于代码签名**，`signtool` 会因 EKU 过滤导致失败；
-- macOS 签名需要 Apple Developer 账号；Linux 签名需要宿主机安装 GPG 密钥及 `dpkg-sig` / `appimagetool`。

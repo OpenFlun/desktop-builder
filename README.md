@@ -557,6 +557,14 @@ build: {
 - 该签名作用于打包后的应用可执行文件（如 `deskApp.exe`）及所有 `.exe` 附带程序（如 `lego.exe`）；
 - 不填 `win.sign` 时跳过签名，构建仍正常完成。
 
+**配置严格校验（构建前）**：
+
+为避免用户等几分钟打包完才发现配置错误，本工具在**构建开始前**（复制文件之前）即校验 `win.sign`，任何问题都会在 **1 秒内**报错退出：
+
+- `type` 必填，缺失时报 `[错误] build.win.sign.type 必填(...)`；
+- `certificateFile` 与 `identity` 至少配置一个，缺失时报 `[错误] 请配置 build.win.sign 中的 certificateFile 或 identity 字段`；
+- `certificateFile` 指向的文件必须存在，否则报 `[错误] 证书文件不存在: <绝对路径>`。
+
 #### 二、Windows 安装程序与卸载程序签名 (`build.inno`)
 
 `build.inno` 下三个字段只需填最基本的 3 项即可：
@@ -587,6 +595,15 @@ build: {
    - `certificateFile` 必填，且文件必须存在；
    - `signingTool` 解析出的工具名若含空白或 `=`，则报错退出（其他字符全部放行）。
 4. **`SignTool` 指令生成**：脚本自动将工具名写入 `.iss` 的 `[Setup]` 段，并通过 `/S<name>=...` 命令行参数向 ISCC 传入完整命令，符合 Inno Setup 官方规范。
+
+**配置严格校验（构建前）**：
+
+与 `win.sign` 一样，`inno` 签名配置也在**构建开始前**完成校验，任何问题 **1 秒内**报错退出：
+
+- `signingTool` 与 `signToolParams` **必须同时配置**：只配其一时报 `[错误] build.inno 的 signingTool 与 signToolParams 必须同时配置`，并提示缺哪个；
+- `signingTool` 解析失败时报 `[错误] 找不到签名工具: <名称>`；
+- `signToolParams.certificateFile` 必填，缺失时报 `[错误] signToolParams.certificateFile 必填`；
+- `certificateFile` 指向的文件必须存在，否则报 `[错误] 证书文件不存在: <绝对路径>`。
 
 #### 三、生成自签名测试证书（仅用于本地验证）
 
