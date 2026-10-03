@@ -235,11 +235,11 @@ export default {
 			// 公共说明:signingTool 与 signToolParams 需同时配置才会启用签名,缺少任一则不签名
 			signedUninstaller: false,                  // 是否为卸载程序签名(true=同时对卸载程序 unins000.exe 签名)
 			signingTool: undefined,                    // 签名工具(可填 'signtool.exe' 自动查找,或完整路径如 'C:\\...\\signtool.exe')
-			signToolParams: undefined,                 // 签名参数(对象格式,仅需填 certificateFile/certificatePassword/algorithm 三项)
+			// 签名参数(对象格式,仅需填 certificateFile/certificatePassword/algorithm 三项)
 			// signToolParams: {                       // 示例:三项填好后自动拼成 signtool 命令行
-			//     certificateFile: 'D:\\build\\cert.pfx', // 证书文件路径(.pfx)
-			//     certificatePassword: 'your-password',   // 证书密码
-			//     algorithm: 'sha256',                    // 签名算法(默认 sha256)
+			//     certificateFile: './build/cert.pfx',  // 证书文件路径(.pfx)
+			//     certificatePassword: 'your-password', // 证书密码(推荐用环境变量)
+			//     algorithm: 'sha256',                  // 签名算法(默认 sha256)
 			// },
 			// 系统要求与架构
 			minVersion: '10.0.17763',              // 最低 Windows 版本(这里设为 Win10 1809+,可调整)

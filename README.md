@@ -381,9 +381,9 @@ build: {
     // 公共说明：signingTool 与 signToolParams 需同时配置才会启用签名，缺少任一则不签名
     signedUninstaller: false,                  // 是否为卸载程序签名
     signingTool: undefined,                    // 签名工具（短名如 'signtool.exe' 自动查找，或完整路径）
-    signToolParams: undefined,                 // 签名参数（对象格式，仅需填 certificateFile/certificatePassword/algorithm 三项）
+    // 签名参数（对象格式，仅需填 certificateFile/certificatePassword/algorithm 三项）
     // signToolParams: {
-    //   certificateFile: 'D:\\build\\cert.pfx',
+    //   certificateFile: './build/cert.pfx',
     //   certificatePassword: 'your-password',
     //   algorithm: 'sha256',
     // },
@@ -567,7 +567,7 @@ build: {
     signedUninstaller: true,               // 是否同时为卸载程序 unins000.exe 签名
     signingTool: 'signtool.exe',           // 签名工具：可填短名（自动查找）或完整路径
     signToolParams: {                      // 对象格式，仅需 3 项
-      certificateFile: 'D:\\build\\cert.pfx',
+      certificateFile: './build/cert.pfx',
       certificatePassword: 'your-password',
       algorithm: 'sha256',                 // 默认 sha256
     },
@@ -593,13 +593,13 @@ build: {
 正式发布请使用受信任 CA 签发的代码签名证书。若只是想本地验证签名流程，可用 PowerShell 生成一张自签名的代码签名证书：
 
 ```powershell
-$pwd = ConvertTo-SecureString -String "test123" -Force -AsPlainText
+$pwd = ConvertTo-SecureString -String "证书密码" -Force -AsPlainText
 $cert = New-SelfSignedCertificate `
   -Type CodeSigningCert `
   -Subject "CN=Test Code Signing" `
   -CertStoreLocation Cert:\CurrentUser\My `
   -NotAfter (Get-Date).AddYears(1)
-Export-PfxCertificate -Cert $cert -FilePath "D:\test\build\test-codesign.pfx" -Password $pwd
+Export-PfxCertificate -Cert $cert -FilePath "证书文件路径" -Password $pwd
 ```
 
 - `-Type CodeSigningCert` 必须带，否则证书 EKU 不含 Code Signing，`signtool` 会直接过滤掉；
