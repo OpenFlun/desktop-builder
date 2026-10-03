@@ -58,7 +58,3 @@
 
 ### 优化
 - ASAR 配置改用 electron-builder v27 对象格式,消除 asar 禁用警告
-
-## [4.1.7] - 2026-10-01 20:26
-### 更新
-- 更新了 "electron-builder" 依赖包;
