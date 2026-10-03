@@ -1,6 +1,6 @@
 # @flun/desktop-builder
 
-> 将任意 Node.js 网站一键打包为当前桌面应用 (Windows, macOS, Linux)（基于 Electron）,支持高度自定义配置;
+> 将任意 Node.js 项目一键打包为当前桌面应用 (Windows, macOS, Linux)（基于 Electron）,支持高度自定义配置;
 
 [![npm version](https://img.shields.io/npm/v/@flun/desktop-builder.svg)](https://www.npmjs.com/package/@flun/desktop-builder)
 [![license](https://img.shields.io/npm/l/@flun/desktop-builder.svg)](https://github.com/OpenFlun/desktop-builder/blob/main/LICENSE)
@@ -10,18 +10,18 @@
 
 ## 📖 简介
 
-`@flun/desktop-builder` 是一个 **将本地 Node.js Web 应用打包成桌面安装包** 的构建工具;您只需提供一个配置文件,即可生成 Windows（基于 Inno Setup 的安装程序）、macOS（DMG/ZIP）或 Linux（AppImage/Deb/RPM 等）安装程序;
+`@flun/desktop-builder` 是一个 **将本地 Node.js 项目打包成桌面安装包** 的构建工具;您只需提供一个配置文件,即可生成 Windows（基于 Inno Setup 的安装程序）、macOS（DMG/ZIP）或 Linux（AppImage/Deb/RPM 等）安装程序;
 
 **核心机制**：
-- 该工具会将您的 Node.js 后端服务代码（由 `serverPath` 指定）与 Electron 前端整合,打包为一个独立的桌面应用;
-- **Electron 本身内置了 Node.js 运行时**,因此打包后的应用在启动时,会使用**自带的 Node.js** 在后台自动运行您的服务脚本;
+- 该工具会将您的 **Node.js 项目**（含所有业务代码、资源文件与依赖）与 Electron 前端整合，打包为一个独立的桌面应用;
+- **Electron 本身内置了 Node.js 运行时**,因此打包后的应用在启动时,会使用**自带的 Node.js** 在后台自动运行您的 Node.js 项目;
 - 最终用户**无需在电脑上安装 Node.js 或任何其他运行时环境**,双击桌面图标即可直接使用;
 
 **关于 asar 打包**：本工具**不支持也不建议启用** ASAR 打包（electron-builder 的 `asar` 配置）。原因如下：
 
-- 本工具的运行架构是「Electron 主进程 + 独立 Node.js 后端子进程」：主进程通过 `child_process.spawn` 启动一个外部 Node 进程来运行您的后端服务（`serverPath` 指定的脚本）；
+- 本工具的运行架构是「Electron 主进程 + 独立 Node.js 子进程」：主进程通过 `child_process.spawn` 启动一个 Node 进程来运行您的 Node.js 项目;
 - 外部 Node 进程**不加载 Electron 的 fs 补丁**，无法读取 asar 归档内的文件；同时 asar 虚拟路径也**不能作为子进程的工作目录**（Windows 的 `CreateProcess` 会直接报 ENOENT）；
-- 因此启用 asar 后，后端服务会启动失败（表现为应用启动后立即退出、页面 `ERR_CONNECTION_REFUSED`）；
+- 因此启用 asar 后，Node.js 子进程会启动失败（表现为应用启动后立即退出、页面 `ERR_CONNECTION_REFUSED`）；
 - 本工具已在 `build.js` 中显式设置 `asar: false`，确保打包后的 `resources/app` 始终是真实目录结构。
 
 > **⚠️ 老用户注意（曾启用过 asar 的版本）**：如果您的机器上曾用早期版本（启用了 asar）构建过，`node_modules` 可能已被 asar 打包过程残留破坏（部分包的内部文件缺失但目录结构还在）。本工具从 v5.1.4 起会在每次安装前先删除依赖快照、安装成功后再写回，因此**任何中断或异常状态都会在下次构建时自动触发完整重装**，无需手动干预。若您升级后首次构建仍遇到模块缺失，可手动删除临时目录缓存强制重装：
@@ -35,15 +35,15 @@
 
 ## ✨ 特性
 
-- 🚀 **一键打包**：基于 `electron-builder` 和 Inno Setup,快速生成当前平台的安装包;
+- 🚀 **一键打包**：基于 `electron-builder` 和 `Inno Setup` 等,快速生成当前平台的安装包;
 - ⚙️ **高度可配置**：通过单一 `desktopAppConfig.js` 控制窗口、图标、菜单、安装选项、签名、压缩等;
 - 🖥️ **跨平台支持**：Windows、macOS、Linux（仅构建当前运行平台,但支持输出多种格式）;
-- 🔌 **自带 Node.js 运行时**：利用 Electron 内置的 Node.js 执行后端服务,用户无需额外安装;
+- 🔌 **自带 Node.js 运行时**：你的 Node.js 项目将由 Electron 内置的 Node.js 接管，不再依赖外部安装;
 - 📦 **灵活的安装选项**：Windows 使用 Inno Setup（支持自定义向导样式、语言、快捷方式等）,macOS 支持 DMG/ZIP,Linux 支持 AppImage/Deb 等;
 - 🎨 **品牌自定义**：应用图标、安装/卸载图标、DMG 卷宗图标、背景图片、向导图片等;
 - 🧩 **菜单自定义**：完全自定义应用菜单（语言、角色、点击回调,甚至内联函数）;
 - 📁 **精细排除**：可排除不需要的文件、依赖包和最终输出文件（`excludeFiles` 同时在复制和打包阶段生效）;
-- 🔧 **可扩展**：允许直接添加 `electron-builder` 任意配置字段;
+- 🔧 **可扩展**：允许直接添加 `electron-builder` 和 `Inno Setup` 任意扩展字段;
 - 📦 **依赖预打包**：构建时自动判断是否安装生产依赖并打包进应用,用户**首次启动无需联网**,开箱即用;
 - 🎨 **主题切换支持**：通过菜单配置轻松切换浅色/深色/跟随系统主题;
 
@@ -51,7 +51,7 @@
 
 ## 📁 包结构
 
-安装后 `@flun/desktop-builder` 包内结构如下（也可参考项目根目录被自动复制出的文件）：
+安装后包内结构如下（也可参考项目根目录被自动复制出的文件）：
 
 ```
 @flun/desktop-builder/
@@ -72,11 +72,9 @@
 └── README.md
 ```
 
-> **说明**：`postinstall` 会把 `desktopAppConfig.js` 和 `build/` 复制到项目根目录（若不存在），因此项目根目录下也会出现同名文件；后续修改请以项目根目录下的副本为准。
-
 ---
 
-## 基础配置
+## 安装前准备
 
 ### 允许安装脚本执行
 
@@ -93,17 +91,13 @@
 }
 ```
 
-> 如果你信任所有安装包,也可以直接在项目 `.npmrc` 中设置 `allow-scripts = false`（表示关闭脚本拦截,所有脚本均允许执行）,或删除 `allow-script` 字段;
-
-> 另外，`desktopAppConfig.js` 中的顶层 `allowScripts` 用于构建阶段安装生产依赖时放行指定包名的安装脚本，与上面的 npm 安装脚本放行场景不同。
-
 ### 下载依赖(Windows)
   - 官网:https://jrsoftware.org/isdl.php
-  - 国内 https://gitee.com/OpenFlun/inno-setup/releases
+  - 中国 https://gitee.com/OpenFlun/inno-setup/releases
 
 1. 大部分情况下无需手动下载,当前版本以植入自动下载安装;
 2. 安装版手动安装时一定要选择默认安装路径,不然会因为找不到文件而构建失败;
-3. 如果你是在国内下载的便捷版压缩文件,请解压到 "C:\Users\你的用户名\.electron-builder-cache" 下;
+3. 如果你是在中国下载的便捷版压缩文件,请解压到 "C:\Users\你的用户名\.electron-builder-cache" 下(Windows);
 
 ---
 
@@ -127,7 +121,7 @@ npm install -D @flun/desktop-builder
 
 ```javascript
 export default {
-  serverPath: './server.js',          // Node.js 启动脚本路径
+  serverPath: './server.js',          // Node.js 项目入口路径
   appUrl: 'http://www.abc.com:7296',  // 启动后访问的地址
   appName: '我的桌面应用',             // 应用显示名称
 };
@@ -151,30 +145,69 @@ await build();
 首次运行会下载 Electron 运行时（约 100MB）,请耐心等待;
 构建完成后,安装包将输出到 `./dist` 目录（可通过 `build.outputDir` 自定义）;
 
----
-
-## ⚙️ 完整配置项
-
-所有配置均在 `desktopAppConfig.js` 中定义,字段说明如下（`*` 为必填）：
-
-| 字段                  | 类型       | 默认值   | 说明                                                                            |
-| --------------------- | ---------- | -------- | ------------------------------------------------------------------------------- |
-| **`serverPath`**      | `string`   | **必填** | Node.js 启动脚本路径（相对于项目根目录）                                        |
-| **`appUrl`**          | `string`   | **必填** | 应用访问地址（如 `http://localhost:7296`）                                      |
-| **`appName`**         | `string`   | null     | 应用显示名称（标题栏、快捷方式、安装程序等）                                    |
-| `enableLogging`       | `boolean`  | `false`  | 是否启用日志文件（调试用）,日志会写入桌面 `myapp_debug.log`                     |
-| `window`              | `object`   | 见下方   | 主窗口外观与行为配置（部分字段会被强制覆盖,请注意说明）                         |
-| `menu`                | `array`    | 见示例   | 应用菜单模板（支持角色、分隔符、点击回调）                                      |
-| `build`               | `object`   | 见下方   | 打包输出配置（可随意添加 `electron-builder` 支持的其他字段）                    |
-| `advanced`            | `object`   | 见下方   | 高级运行行为                                                                    |
-| `allowScripts`        | `object`   | `{}`     | 允许执行安装脚本的包名列表（构建阶段使用）                                      |
-| `excludeFiles`        | `string[]` | `[]`     | 复制到临时目录时排除的文件/目录（支持 glob）,**同时会追加到打包阶段的排除规则** |
-| `excludeDependencies` | `string[]` | `[]`     | 从最终依赖列表中移除的 npm 包名（不会打包）                                     |
-| `excludeOutputs`      | `string[]` | `[]`     | 从最终输出目录中排除的安装包文件（如 `*.blockmap`、`latest.yml`）               |
 
 ---
 
-### 窗口配置 (`window`)
+## ⚙️ 配置文件
+
+所有配置集中在项目根目录的 `desktopAppConfig.js` 中，本工具会在构建时读取该文件。配置对象按功能划分为以下几个顶层字段，各字段的作用如下表；每个字段的详细配置见后续对应章节。
+
+> **说明**：本工具的所有配置对象（`window` / `menu` / `build` 及其子对象）**均支持扩展**——除了本章节列出的常用字段，你还可以直接添加 `electron-builder`、`Inno Setup` 等官方支持的其他字段。工具会原样合并到最终的 `builder.json` / `.iss` 脚本中。
+
+### 配置总览
+
+| 顶层字段              | 类型       | 作用                                                         | 详细说明                                        |
+| --------------------- | ---------- | ------------------------------------------------------------ | ----------------------------------------------- |
+| `serverPath`          | `string`   | **必填**，Node.js 项目入口文件路径（相对于项目根目录）       | [1. 基础字段](#1-基础字段)                      |
+| `appUrl`              | `string`   | **必填**，应用启动后访问的地址（如 `http://localhost:7296`） | [1. 基础字段](#1-基础字段)                      |
+| `appName`             | `string`   | 应用显示名称（标题栏、快捷方式、安装程序等）                 | [1. 基础字段](#1-基础字段)                      |
+| `enableLogging`       | `boolean`  | 是否启用日志文件（调试用）                                   | [1. 基础字段](#1-基础字段)                      |
+| `window`              | `object`   | 主窗口外观与行为                                             | [2. 窗口配置](#2-窗口配置-window)               |
+| `menu`                | `array`    | 应用菜单模板（语言、角色、点击回调）                         | [3. 菜单配置](#3-菜单配置-menu)                 |
+| `build`               | `object`   | 打包配置（应用标识、输出目录、图标、安装选项、签名等）       | [4. 打包配置](#4-打包配置-build)                |
+| `advanced`            | `object`   | Node.js 子进程启停行为                                       | [5. 高级选项](#5-高级选项-advanced)             |
+| `allowScripts`        | `object`   | 构建阶段放行安装脚本的包名列表                               | [6. 允许安装脚本](#6-允许安装脚本-allowscripts) |
+| `excludeFiles`        | `string[]` | 复制项目文件时排除的文件/目录                                | [7. 排除规则](#7-排除规则)                      |
+| `excludeDependencies` | `string[]` | 从最终依赖列表中移除的 npm 包                                | [7. 排除规则](#7-排除规则)                      |
+| `excludeOutputs`      | `string[]` | 从最终输出目录中排除的文件                                   | [7. 排除规则](#7-排除规则)                      |
+
+`build` 子字段概览：
+
+| 子字段                                                                                    | 作用                        | 详细说明                                               |
+| ----------------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------ |
+| `build.appId` / `outputDir` / `publisher` / `shortcutName` / `nativeModules` / `toolsets` | 通用打包配置                | [4.1 通用字段](#41-通用字段)                           |
+| `build.win`                                                                               | Windows 平台配置            | [4.2 Windows](#42-windows-buildwin)                    |
+| `build.inno`                                                                              | Windows Inno Setup 安装程序 | [4.3 Inno Setup](#43-inno-setup-buildinno)             |
+| `build.mac` / `build.dmg`                                                                 | macOS 应用与 DMG 卷宗       | [4.4 macOS 与 DMG](#44-macos-与-dmg-buildmac-builddmg) |
+| `build.linux`                                                                             | Linux 应用与包格式          | [4.5 Linux](#45-linux-buildlinux)                      |
+
+签名相关的操作（证书生成、信任配置、各平台签名细节）统一在 [🔏 代码签名](#-代码签名) 章节说明。
+
+---
+
+### 1. 基础字段
+
+**作用**：定义应用的基本信息和启动入口。
+
+```javascript
+export default {
+  serverPath: './server.js',           // 项目入口（相对项目根目录）
+  appUrl: 'http://localhost:7296',     // 应用访问地址
+  appName: '我的应用',                  // 应用显示名称（不填则从 package.json 的 name 读取）
+  enableLogging: false,                // 是否启用日志（写入桌面 myapp_debug.log）
+};
+```
+
+- **`serverPath`**（必填）：Node.js 项目的入口文件路径；
+- **`appUrl`**（必填）：Electron 主窗口加载的地址，也就是你 Node.js 项目的访问地址。若使用 HTTPS，需填写 `https://...`。
+- **`appName`**：应用显示名称，用于窗口标题、快捷方式、安装程序等。不填时默认从 `package.json` 的 `name` 读取；若 `name` 也没有，则回退为 `deskApp`。
+- **`enableLogging`**：调试开关。设为 `true` 时，主进程和子服务的运行日志会写入桌面的 `myapp_debug.log`，便于排查启动问题。默认 `false`。
+
+---
+
+### 2. 窗口配置 (`window`)
+
+**作用**：控制 Electron 主窗口的外观、尺寸、行为以及内部渲染进程的 `webPreferences`。
 
 ```javascript
 window: {
@@ -207,23 +240,33 @@ window: {
 }
 ```
 
-> **⚠️ 重要安全与行为警告**
-> 由于本工具需要从渲染进程启动和管理 Node.js 后端服务,`electron-main.js` 在创建窗口时会**强制覆盖** `webPreferences` 中的 `nodeIntegration`、`contextIsolation` 和 `sandbox` 三个属性：
-> - `nodeIntegration: true`  （开启,渲染进程可使用 Node.js API）
-> - `contextIsolation: false`（关闭,渲染进程可直接访问 Electron 模块）
-> - `sandbox: false`          （关闭,以保证服务能够正常运行）
->
-> **这意味着：**
-> - 您在配置中设置的这三项 **不会生效**,实际运行时将以强制值为准；
-> - **渲染进程拥有完整的 Node.js 能力**,因此**请确保您的应用仅加载受信任的本地内容**,不要加载任何外部网页,否则存在严重安全风险；
-> - 此设计是为了保证后端服务自动启动等核心功能正常工作,**不建议用户尝试重新关闭这些选项**,否则可能导致应用无法运行；
-> - 除上述三项外,其他 `webPreferences` 选项（如 `plugins`、`webSecurity`、`enableWebAuthn` 等）**均正常生效**,您可以按需配置;
+- **基础尺寸**（`width` / `height` / `minWidth` / `minHeight` / `maxWidth` / `maxHeight`）：窗口的初始尺寸与缩放范围。`maxWidth` / `maxHeight` 留空表示不限制。
+- **行为控制**（`resizable` / `fullscreenable` / `alwaysOnTop` / `frame`）：是否可缩放、是否允许全屏、是否置顶、是否显示系统标题栏。
+- **`titleBarStyle`**：仅 macOS 生效。`'default'` 显示标准标题栏；`'hidden'` / `'hiddenInset'` 隐藏标题栏（常用于自定义无边框 UI）。
+- **`backgroundColor`**：窗口内容加载完成前显示的背景色，与 `show: false` 配合使用可避免白屏。
+- **`show`**：是否立即显示窗口。设为 `false` 时，Electron 会等页面渲染完成后再显示（推荐，防白屏）。
+
+#### webPreferences（重点）
+
+`webPreferences` 中，**以下三项会被本工具在创建窗口时强制覆盖**，无论你在配置里怎么写：
+
+| 配置项             | 你的配置 | 实际运行值  | 原因                                             |
+| ------------------ | -------- | ----------- | ------------------------------------------------ |
+| `nodeIntegration`  | 任意     | **`true`**  | 渲染进程需使用 Node.js API 以管理 Node.js 子进程 |
+| `contextIsolation` | 任意     | **`false`** | 渲染进程需直接访问 Electron 模块                 |
+| `sandbox`          | 任意     | **`false`** | 保证 Node.js 子进程能够正常启动                  |
+
+> ⚠️ **安全提示**：以上三项强制覆盖意味着**渲染进程拥有完整的 Node.js 能力**，请确保你的应用**只加载受信任的本地内容**，不要加载任何外部网页，否则存在严重安全风险。
+
+**除上述三项外，其余 `webPreferences` 选项均正常生效**，可自由配置，例如 `plugins`、`webSecurity`、`allowRunningInsecureContent`、`enableWebAuthn` 等。
+
+> **扩展说明**：`window` 对象支持直接添加 `electron-builder` / Electron 官方支持的其他窗口字段（如 `modal`、`parent`、`opacity` 等），工具会原样传递给 Electron。
 
 ---
 
-### 菜单配置 (`menu`)
+### 3. 菜单配置 (`menu`)
 
-支持 Electron 标准菜单模板,可自由修改语言和结构;示例：
+**作用**：定义应用顶部菜单栏的结构、语言与交互。采用 Electron 标准菜单模板，支持角色（`role`）、分隔符（`type: 'separator'`）和自定义点击回调（`click`）。
 
 ```javascript
 menu: [
@@ -235,30 +278,49 @@ menu: [
       { role: 'quit', label: '退出' }
     ]
   },
+  {
+    label: '编辑',
+    submenu: [
+      { role: 'undo', label: '撤销' },
+      { role: 'redo', label: '重做' },
+      { type: 'separator' },
+      { role: 'cut', label: '剪切' },
+      { role: 'copy', label: '复制' },
+      { role: 'paste', label: '粘贴' },
+      { role: 'selectAll', label: '全选' }
+    ]
+  },
   // ... 更多菜单
 ]
 ```
 
-- 支持 `role`（标准角色）、`label`、`type`、`click` 等；
-- 特殊字符串 `'__TOGGLE_BROWSER__'` 会被替换为“在浏览器中打开”功能（调用系统默认浏览器打开 `appUrl`）；
-- `click` 也可直接写函数字符串（需可被 `eval` 执行,例如 `"() => { ... }"`）;
+- **`role`**：使用 Electron 标准角色（如 `undo`、`redo`、`cut`、`copy`、`paste`、`reload`、`toggleDevTools` 等），行为与快捷键自动绑定；
+- **`label`**：菜单项的显示文本，可自由改为任意语言；
+- **`type: 'separator'`**：分隔线；
+- **`click`**：自定义回调，可写函数字符串（如 `` `() => { ... }` ``），工具会 `eval` 执行；
+- **特殊标记 `'__TOGGLE_BROWSER__'`**：出现在 `click` 位置时，会被替换为"在系统默认浏览器中打开 `appUrl`"的功能。
+
+菜单内容完全自由，你可以增删菜单、改变语言、调整结构——它只是一个数组，交给 Electron 的 `Menu.buildFromTemplate` 使用。
 
 ---
 
-### 打包配置 (`build`)
+### 4. 打包配置 (`build`)
 
-`build` 对象除了下面列出的常用子字段,**还支持直接写入任何 `electron-builder` 官方支持的配置项**（如 `compression`、`extraResources`、`publish` 等）,它们会被合并到最终 `builder.json` 中;
+**作用**：定义应用的打包输出、应用标识、图标、安装程序、签名等所有与最终产物相关的配置。`build` 对象会与 `electron-builder` 的原生配置合并，**你可以直接添加任何 `electron-builder` 官方支持的字段**（如 `extraResources`、`publish`、`afterPack` 等）。
 
-**重要说明**：工具内部硬编码了以下 `files` 排除规则（您无需手动配置）：
+**工具内部硬编码的 `files` 排除规则**（无需手动配置）：
 
 - `!builder.json`
 - `!**/*.map`、`!**/*.ts`、`!**/*.cts`、`!**/*.mts`
-- `!node_modules/**/*.md`、`!node_modules/**/*.markdown`、`!node_modules/**/license*`、`!node_modules/**/licence*`、
-  `!node_modules/**/LICENSE*`、`!node_modules/**/LICENCE*`、`!node_modules/node/**`、
-  `!node_modules/node-win*/**`、`!node_modules/node-darwin*/**`、`!node_modules/node-linux*/**`、
-  `!node_modules/node-freebsd*/**`、`!node_modules/node-sunos*/**`、`!node_modules/node-aix*/**`
+- `!node_modules/**/*.md`、`!node_modules/**/*.markdown`、`!node_modules/**/license*`、`!node_modules/**/licence*`、`!node_modules/**/LICENSE*`、`!node_modules/**/LICENCE*`、`!node_modules/node/**`、`!node_modules/node-win*/**`、`!node_modules/node-darwin*/**`、`!node_modules/node-linux*/**`、`!node_modules/node-freebsd*/**`、`!node_modules/node-sunos*/**`、`!node_modules/node-aix*/**`
 
-如果您需要额外排除文件,请使用 `excludeFiles`（它会自动转换为 `files` 排除规则）;
+如果你需要额外排除文件，请使用 `excludeFiles`（它会自动转换为 `files` 排除规则）。
+
+> **关于 asar**：本工具**默认禁用** asar 打包。原因详见 [简介中的说明](#-简介)。因此 `resources/app` 始终是真实目录结构，Node.js 子进程能正常读取文件。
+
+#### 4.1 通用字段
+
+**作用**：与平台无关的打包基础配置。
 
 ```javascript
 build: {
@@ -266,231 +328,260 @@ build: {
   outputDir: './dist',                // 安装包输出目录
   publisher: null,                    // 发布者名称（默认从 package.json 读取 author）
   shortcutName: null,                 // 快捷方式名称（默认使用 appName）
-
-  // 原生模块配置
-  // npmRebuild: false = 不重编译原生模块,减少构建时间
-  // electron-builder v27 变更:原生模块选项统一收拢到 nativeModules 对象下
   nativeModules: {
-    npmRebuild: false,
+    npmRebuild: false,                // 不重编译原生模块,减少构建时间
   },
-
-  // 工具集配置:指定构建时使用的辅助工具版本
-  // wine: 'system' = 使用宿主机已安装的 Wine
-  // 用于在 macOS 上构建 Windows 目标,需先执行: brew install --cask wine-stable
-  // electron-builder v27 变更:显式锁定 wine 版本,避免默认值静默漂移
   toolsets: {
-    wine: 'system',
+    wine: 'system',                   // 使用宿主机已安装的 Wine(macOS 上构建 Windows 目标时)
   },
+  // ... 其他 electron-builder 字段可自由添加
+}
+```
 
-  // ----- Windows 配置（electron-builder 部分）-----
+- **`appId`**：应用唯一标识，采用反向域名格式（如 `com.mycompany.myapp`），用于注册表、应用识别、升级判断。
+- **`outputDir`**：最终安装包的输出目录，默认为 `./dist`。
+- **`publisher`**：发布者名称，用于安装程序信息；不填则从 `package.json` 的 `author` 读取。
+- **`shortcutName`**：快捷方式显示名称；不填则使用 `appName`。
+- **`nativeModules.npmRebuild`**：是否重编译原生模块。设为 `false` 可跳过重编译，减少构建时间（默认 `false`）。
+- **`toolsets.wine`**：辅助工具版本配置。`'system'` 表示使用宿主机已安装的 Wine（用于在 macOS 上构建 Windows 目标）。
+
+#### 4.2 Windows (`build.win`)
+
+**作用**：Windows 平台的应用配置。
+
+```javascript
+build: {
   win: {
-    // target 会自动加入 'dir',以确保生成 win-unpacked 目录供 Inno Setup 使用
     icon: './build/icon.png',         // 应用图标（建议 512×512 PNG）
-    // 其他可选：publisherName 等
-    // 应用本体签名（electron-builder v27: 统一移入 sign 对象,必须带 type 字段）
-    // 签名对象：打包进安装包的应用可执行文件（与下方 inno 的签名字段职责不同）
-    // sign: {
-    //   type: 'signtool',                                     // 必填,固定为 'signtool'(v27 判别字段)
-    //   certificateFile: './build/cert.pfx',                  // 证书文件路径(.pfx)
-    //   certificatePassword: process.env.CSC_KEY_PASSWORD,    // 证书密码(推荐用环境变量)
-    //   signingHashAlgorithms: ['sha256'],
-    // },
+    // sign: { ... }                  // 应用本体签名 → 详见「🔏 代码签名」章节
+    // ... 其他 electron-builder 的 win 字段可自由添加
   },
+}
+```
 
-  // ----- Windows Inno Setup 配置（专用于生成安装程序）-----
+- **`icon`**：应用图标，建议 512×512 PNG，用于快捷方式和可执行文件图标。
+- **`sign`**：应用本体签名配置，作用于打包后的应用可执行文件（如 `deskApp.exe`）及所有附带 `.exe` 程序。**详细配置与操作请见 [🔏 代码签名 → 一、Windows 应用本体签名](#一windows-应用本体签名-buildwinsign)**。
+
+> **扩展说明**：`build.win` 支持直接添加任何 `electron-builder` 官方支持的 Windows 字段（如 `publisherName`、`requestedExecutionLevel`、`target` 等）。
+
+#### 4.3 Inno Setup (`build.inno`)
+
+**作用**：配置 Windows 安装程序（基于 Inno Setup）。涵盖安装界面、图标图片、权限、压缩、快捷方式、安装后运行等。**用户只需配置常用字段，工具会自动生成符合 Inno Setup 7.x 规范的 `.iss` 脚本**。
+
+**通用字段**（常用）：
+
+```javascript
+build: {
   inno: {
-    // 基础信息
+    // ---- 基础信息 ----
     appName: undefined,               // 应用显示名称（默认使用 appName）
     appVersion: undefined,            // 版本号（默认从 package.json 读取 version）
     appPublisher: undefined,          // 发布者（默认使用 build.publisher 或 package.json author）
     appId: undefined,                 // 应用唯一标识（默认使用 build.appId）
-    defaultDirName: null,             // 默认安装目录,支持变量（如 '{autopf}\\MyApp'）
+    defaultDirName: null,             // 默认安装目录（如 '{autopf}\\MyApp'）
     defaultGroupName: undefined,      // 开始菜单文件夹名（默认 appName）
     outputDir: undefined,             // 输出目录（默认使用 build.outputDir）
     outputBaseFilename: undefined,    // 安装包文件名（默认 `${appName}Setup`）
 
-    // 界面控制
-    disableWelcomePage: false,
-    disableDirPage: false,
-    disableProgramGroupPage: false,
-    disableFinishedPage: false,
-    disableReadyPage: false,
-    disableReadyMemo: false,
-    disableStartupPrompt: false,
-    showLanguageDialog: true,
-    flatComponentsList: false,
-    showComponentSizes: false,
-    showTasksTreeLines: false,
+    // ---- 界面控制 ----
+    disableWelcomePage: false,        // 跳过欢迎页
+    disableDirPage: false,            // 禁止更改安装路径
+    disableProgramGroupPage: false,   // 禁止选择开始菜单文件夹
+    disableFinishedPage: false,       // 隐藏"安装完成"页面
+    disableReadyPage: false,          // 隐藏"准备安装"确认页
+    disableReadyMemo: false,          // 准备页不显示设置摘要
+    disableStartupPrompt: false,      // 禁止启动时显示"是否安装..."提示
+    showLanguageDialog: true,         // 显示语言选择对话框
+    flatComponentsList: false,        // 组件列表使用扁平样式
+    showComponentSizes: false,        // 显示每个组件大小
+    showTasksTreeLines: false,        // 任务页显示树形连线
 
-    // 图标与图片
-    setupIconFile: './build/setup.ico',          // 安装程序图标（.ico）
-    uninstallDisplayIcon: './build/uninstallerIcon.ico', // 卸载程序图标
+    // ---- 图标与图片 ----
+    setupIconFile: './build/setup.ico',                       // 安装程序图标（.ico）
+    uninstallDisplayIcon: './build/uninstallerIcon.ico',      // 卸载程序图标（.ico）
+    WizardImageFile: './build/wizard.bmp',                    // 左侧大图（164×314 BMP）
+    WizardSmallImageFile: './build/wizardSmall.bmp',          // 右上小图（55×58 BMP）
+    WizardImageFileDynamicDark: './build/wizard.bmp',         // 深色模式左侧大图
+    WizardSmallImageFileDynamicDark: './build/wizardSmall.bmp',// 深色模式右上小图
 
-    // 向导样式与背景
-    WizardStyle: 'dynamic',             // modern/classic/dynamic/dark/light...
-    WizardImageFile: './build/wizard.bmp',        // 左侧大图（164×314 BMP）
-    WizardSmallImageFile: './build/wizardSmall.bmp', // 右上小图（55×58 BMP）
-    WizardImageBackColor: '#CE2751',    // 标准模式下左侧大图背景色
-    WizardSmallImageBackColor: '#CE2751',
-    WizardBackColor: '#CE2751',
-    WizardImageStretch: true,
-    // 深色模式（仅当 WizardStyle='dynamic' 时生效）
-    WizardImageFileDynamicDark: './build/wizard.bmp',
-    WizardSmallImageFileDynamicDark: './build/wizardSmall.bmp',
-    WizardImageBackColorDynamicDark: '#228866',
-    WizardSmallImageBackColorDynamicDark: '#228866',
-    WizardBackColorDynamicDark: '#228866',
+    // ---- 向导样式与颜色 ----
+    WizardStyle: 'dynamic',           // modern / classic / dynamic / dark / light...
+    WizardImageBackColor: '#CE2751',  // 标准模式左侧大图背景色
+    WizardSmallImageBackColor: '#CE2751', // 标准模式右上小图背景色
+    WizardBackColor: '#CE2751',       // 标准模式背景色
+    WizardImageBackColorDynamicDark: '#228866',      // 深色模式左侧大图背景色
+    WizardSmallImageBackColorDynamicDark: '#228866', // 深色模式右上小图背景色
+    WizardBackColorDynamicDark: '#228866',           // 深色模式背景色
+    WizardImageStretch: true,         // 向导图片是否填充整个区域
 
-    // 权限
-    privilegesRequired: 'lowest',       // admin / lowest / poweruser
-    privilegesRequiredOverridesAllowed: 'dialog',
+    // ---- 权限 ----
+    privilegesRequired: 'lowest',     // admin / lowest / poweruser
+    privilegesRequiredOverridesAllowed: 'dialog', // 允许通过对话框提升权限
 
-    // 压缩
-    compression: 'lzma2',               // lzma2 / zip / none
-    solidCompression: true,
-    LZMADictionarySize: 4096,           // KB
-    LZMANumFastBytes: 64,
+    // ---- 压缩 ----
+    compression: 'lzma2',             // lzma2 / zip / none
+    solidCompression: true,           // 固实压缩
+    LZMADictionarySize: 4096,         // LZMA 字典大小（KB）
+    LZMANumFastBytes: 64,             // LZMA 快速字节数
 
-    // 快捷方式
-    createDesktopShortcut: true,
-    createStartMenuShortcut: true,
-    shortcutName: undefined,            // 快捷方式名称（默认 appName）
+    // ---- 快捷方式 ----
+    createDesktopShortcut: true,      // 创建桌面快捷方式
+    createStartMenuShortcut: true,    // 创建开始菜单快捷方式
+    shortcutName: undefined,          // 快捷方式名称（默认使用 build.shortcutName）
 
-    // 安装后运行
-    runAfterInstall: true,
-    runDescription: '运行应用',
+    // ---- 安装后运行 ----
+    runAfterInstall: true,            // 安装完成后是否运行应用
+    runDescription: '运行应用',        // 运行复选框的描述文字
 
-    // 高级选项
-    languageDetectionMethod: 'uilanguage',
-    allowCancelDuringInstall: true,
-    usePreviousAppDir: true,
-    usePreviousGroup: true,
-    usePreviousSetupType: true,
-    usePreviousTasks: true,
-    usePreviousLanguage: true,
-    updateUninstallLogAppName: false,
-    uninstallable: true,
-    createUninstallRegKey: true,
-    uninstallDisplayName: '卸载(destApp)',
-    uninstallLogMode: 'append',
-    appSupportURL: undefined,
-    appUpdatesURL: undefined,
-    appPublisherURL: '',
-    appReadmeFile: '',
-    appContact: '',
-    appComments: '',
-    versionInfoVersion: undefined,
-    versionInfoDescription: undefined,
-    versionInfoCopyright: undefined,
-    versionInfoCompany: undefined,
-    // 安装程序签名（Inno Setup 自身机制）
-    // 签名对象：安装程序 Setup.exe 与卸载程序 unins000.exe（与上方 win.sign 职责不同）
-    // 公共说明：signingTool 与 signToolParams 需同时配置才会启用签名，缺少任一则不签名
-    signedUninstaller: false,                  // 是否为卸载程序签名
-    signingTool: undefined,                    // 签名工具（短名如 'signtool.exe' 自动查找，或完整路径）
-    // 签名参数（对象格式，仅需填 certificateFile/certificatePassword/algorithm 三项）
-    // signToolParams: {
-    //   certificateFile: './build/cert.pfx',
-    //   certificatePassword: 'your-password',
-    //   algorithm: 'sha256',
-    // },
-    minVersion: '10.0.17763',            // 最低 Windows 版本
-    onlyBelowVersion: '',
-    useSetupLdr: true,
+    // ---- 高级选项 ----
+    languageDetectionMethod: 'uilanguage', // uilanguage / locale / none
+    allowCancelDuringInstall: true,   // 允许安装过程中取消
+    usePreviousAppDir: true,          // 升级时记住上次安装目录
+    usePreviousGroup: true,           // 升级时记住开始菜单文件夹
+    usePreviousSetupType: true,       // 升级时记住安装类型
+    usePreviousTasks: true,           // 升级时记住任务选择
+    usePreviousLanguage: true,        // 升级时记住语言选择
+    uninstallable: true,              // 是否可卸载
+    createUninstallRegKey: true,      // 创建卸载注册表项
+    uninstallDisplayName: '卸载(应用名)', // "添加/删除程序"中显示的名称
+    uninstallLogMode: 'append',       // 卸载日志模式：new / append / overwrite
 
-    // 更多 Inno Setup 字段请参考官方文档：https://jrsoftware.org/ishelp/index.php?topic=setup
-    // 或本人整理的中文文档:https://gitee.com/OpenFlun/inno-setup
+    // ---- 版本信息 ----
+    versionInfoVersion: undefined,    // 文件版本（默认使用 inno.appVersion）
+    versionInfoDescription: undefined,// 文件描述
+    versionInfoCopyright: undefined,  // 版权信息
+    versionInfoCompany: undefined,    // 公司名称（默认从 package.json 读取 author）
+
+    // ---- 系统要求 ----
+    minVersion: '10.0.17763',         // 最低 Windows 版本（默认 Win10 1809+）
+    onlyBelowVersion: '',             // 限制最高可运行版本
+    useSetupLdr: true,                // 使用 SetupLdr 引导程序（处理 UAC 和系统版本检查）
+
+    // ---- 签名 ----
+    // signedUninstaller: false,      // 是否为卸载程序签名
+    // signingTool: undefined,        // 签名工具 → 详见「🔏 代码签名」
+    // signToolParams: undefined,     // 签名参数（对象格式） → 详见「🔏 代码签名」
+
+    // ... 其他 Inno Setup [Setup] 节指令可直接添加
   },
+}
+```
 
-  // ----- macOS 配置 -----
+- **基础信息**：`appName` / `appVersion` / `appPublisher` / `appId` 均会自动从其他配置继承，通常无需手动填写；
+- **界面控制**：通过 `disable*` 系列字段控制向导页的显示与否，你可以按需精简安装流程；
+- **图标与图片**：所有图片资源均为可选，不配置则使用默认或省略。所有硬编码路径（如 `./build/xxx`）都会在项目根目录下解析；
+- **向导样式**：`WizardStyle: 'dynamic'` 支持自动切换深浅色，与系统主题同步；
+- **权限**：`privilegesRequired: 'lowest'` 表示最低权限（无需管理员），`'admin'` 表示需要管理员；
+- **压缩**：`lzma2` 压缩率最高，`zip` 兼容性最好，`none` 不压缩；
+- **签名**：`signingTool` 与 `signToolParams` 必须**同时配置**才会启用签名，且需符合对象格式；详细配置见 [🔏 代码签名](#二windows-安装程序与卸载程序签名-buildinno)。
+
+> **扩展说明**：`build.inno` 支持直接添加任何 Inno Setup 官方支持的 `[Setup]` 节指令（按 Inno Setup 规范书写即可）。完整指令列表参考 [Inno Setup 官方文档](https://jrsoftware.org/ishelp/index.php?topic=setup)。
+
+#### 4.4 macOS 与 DMG (`build.mac` / `build.dmg`)
+
+**作用**：`build.mac` 配置 macOS 应用的打包目标与签名；`build.dmg` 配置 DMG 卷宗的外观与布局。**仅在 macOS 上构建时生效**。
+
+```javascript
+build: {
   mac: {
-    target: ['dmg', 'zip'],          // 同时生成 dmg 和 zip（zip 可用于自动更新）
-    icon: './build/icon.icns',       // 应用图标,建议 512x512 .icns
-    // 代码签名与公证配置（electron-builder v27: 统一移入 sign 对象）
-    // 公共说明: identity 与 certificateFile 二选一; certificatePassword 留空则自动读 CSC_KEY_PASSWORD
-    // sign: {
-    //   identity: 'Developer ID Application: Your Name (TEAM123)',  // 与 certificateFile 二选一
-    //   certificateFile: undefined,                                 // .p12 路径（与 identity 二选一）
-    //   certificatePassword: process.env.CSC_KEY_PASSWORD,          // 证书密码
-    //   hardenedRuntime: true,                                      // 启用 Hardened Runtime（公证必需）
-    //   entitlements: './build/entitlements.mac.plist',             // 需自备
-    //   entitlementsInherit: './build/entitlements.mac.inherit.plist', // 需自备
-    //   // notarize: { teamId: 'TEAM123', appleId: 'your@email.com', appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD },
-    // },
+    target: ['zip', 'dmg'],          // 构建目标：dmg / zip / pkg / mas 等
+    // icon: './build/icon.icns',    // 应用图标（.icns，需自备）
+    // sign: { ... }                 // 签名与公证 → 详见「🔏 代码签名」章节
+    // ... 其他 electron-builder 的 mac 字段可自由添加
   },
   dmg: {
-    iconSize: 80,
-    window: { width: 540, height: 380 },
-    // 增强选项（可选）
-    // background: './build/background.png',       // 背景图片
-    // backgroundColor: '#5127ce',               // 无背景图时的背景色
-    // icon: 'build/dmg-icon.icns',               // 卷宗图标
-    // title: '${productName} ${version}',         // 卷宗名称
-    // format: 'UDZO',                             // 压缩格式
-    // contents: [                                 // 自定义图标布局
+    iconSize: 80,                            // 图标大小
+    window: { width: 540, height: 380 },     // DMG 窗口尺寸
+    // background: './build/background.png', // 背景图片（建议 PNG，540×380）
+    // backgroundColor: '#5127ce',           // 无背景图时的背景色
+    // icon: './build/icon.icns',            // DMG 卷宗图标
+    // title: '${productName} ${version}',   // 挂载后显示的卷宗名称
+    // format: 'UDZO',                       // 压缩格式（UDZO/ULFO/UDBZ 等）
+    // contents: [                           // 自定义图标布局
     //   { x: 130, y: 220, type: 'file' },
     //   { x: 410, y: 220, type: 'link', path: '/Applications' }
     // ]
   },
+}
+```
 
-  // ----- Linux 配置 -----
+- **`mac.target`**：构建目标格式。`dmg` 为磁盘映像，`zip` 常用于自动更新，`pkg` 为安装包，`mas` 为 Mac App Store 专用。
+- **`mac.icon`**：`.icns` 格式图标，需自备（工具包内仅提供跨平台 PNG，不含 `.icns`）。
+- **`mac.sign`**：macOS 签名与公证配置。**详细配置与操作请见 [🔏 代码签名 → 四、macOS 签名与公证](#三macos-签名与公证-buildmacsign)**。
+- **`dmg.*`**：DMG 卷宗外观，全部为可选增强项，不配置则使用默认样式。
+
+> **扩展说明**：`build.mac` 与 `build.dmg` 支持直接添加 `electron-builder` 官方支持的任何 macOS / DMG 字段。
+
+#### 4.5 Linux (`build.linux`)
+
+**作用**：配置 Linux 平台的应用打包目标与元信息。**仅在 Linux 上构建时生效**。
+
+```javascript
+build: {
   linux: {
-    target: ['AppImage', 'deb'],     // 可同时生成多种格式：AppImage / deb / rpm / snap / flatpak 等
-    category: 'Development',         // 系统菜单分类（如 Utility, Network, Development 等）
-    // Linux 图标无需显式配置，只需在 ./build 目录下提供符合尺寸和格式的 icon.png（建议 512×512 PNG）
-    // 可选高级字段
+    target: ['AppImage', 'deb'],     // 构建目标：AppImage / deb / rpm / snap / flatpak 等
+    category: 'Development',         // 系统菜单分类
     // description: '完整的应用描述',
     // synopsis: '简短描述',
     // maintainer: '你的名字 <email@example.com>',
     // vendor: '我的公司',
     // executableArgs: ['--enable-features=...'],
-    // desktop: {                    // 自定义 .desktop 文件
-    //   entry: {
-    //     Name: '我的应用',
-    //     Comment: '一个很棒的应用',
-    //     Categories: 'Development;Utility;',
-    //     Keywords: 'app;tool;',
-    //     Terminal: false,
-    //     Type: 'Application'
-    //   }
-    // },
-    // electron-builder v27 变更: syncDesktopName 已被移除,行为变为始终同步 .desktop 文件名与窗口类名
-    // electron-builder v27 变更: executableArgs 会被注入 <executableName>-launcher 脚本,生成的 .desktop Exec 指向该脚本
-    // 代码签名:GPG 签名(deb 通过 dpkg-sig,AppImage 通过 appimagetool)
-    // 公共说明:electron-builder 本身不签名 Linux 包,签名由底层工具完成;
-    //           需先在宿主机安装 GPG 密钥,推荐用环境变量传入密钥与密码
-    // sign: {
-    //   gpgPrivateKey: process.env.GPG_PRIVATE_KEY,       // GPG 私钥(ASCII-armored 内容)
-    //   gpgKeyPassphrase: process.env.GPG_KEY_PASSPHRASE, // GPG 密钥密码
-    // },
+    // desktop: { entry: { Name: '我的应用', Comment: '...', ... } }, // 自定义 .desktop 文件
+    // sign: { ... }                 // GPG 签名 → 详见「🔏 代码签名」章节
+    // ... 其他 electron-builder 的 linux 字段可自由添加
   },
-  // 特定格式的额外配置（可选）
-  // appImage: { systemIntegration: 'doNotAsk' },
-  // deb: { depends: ['libgtk-3-0'] },
 }
 ```
 
-> **平台说明**：构建时只生成**当前运行操作系统**对应的安装包（例如 Windows 下生成 `.exe` 安装程序）;
+- **`linux.target`**：可同时指定多种格式，构建时会生成多个安装包。
+- **`category`**：系统菜单中的分类，如 `Utility` / `Network` / `Development`。
+- **Linux 图标**：无需显式配置，只需在 `./build` 目录下提供 `icon.png`（建议 512×512 PNG），工具会自动识别。
+- **`linux.sign`**：Linux 包的 GPG 签名配置。**详细配置与操作请见 [🔏 代码签名 → 五、Linux 包签名](#四linux-包签名-buildlinuxsign)**。
+
+> **扩展说明**：`build.linux` 支持直接添加 `electron-builder` 官方支持的任何 Linux 字段。
 
 ---
 
-### 高级选项 (`advanced`)
+### 5. 高级选项 (`advanced`)
+
+**作用**：控制应用与 Node.js 子进程的启停关系。
 
 ```javascript
 advanced: {
-  autoStartServer: true,   // 应用启动时自动运行后端服务
-  autoKillServer: true,    // 应用退出时自动关闭后端服务
+  autoStartServer: true,   // 应用启动时自动运行 Node.js 子进程
+  autoKillServer: true,    // 应用退出时自动关闭 Node.js 子进程
 }
 ```
 
+- **`autoStartServer`**：设为 `true` 时，Electron 主窗口加载前会自动启动 `serverPath` 指定的 Node.js 子进程，等待其就绪后再显示窗口。默认 `true`。
+- **`autoKillServer`**：设为 `true` 时，应用退出时会自动关闭 Node.js 子进程，避免残留。默认 `true`。
+
 ---
 
-### 排除文件 (`excludeFiles`)
+### 6. 允许安装脚本 (`allowScripts`)
 
-在复制项目文件到临时构建目录时,排除指定的文件或目录（支持 glob 模式）;
-**新行为（v3.0.0）**：这些模式会自动转换为 `electron-builder` 的排除规则（添加 `!` 前缀）,因此也会在**打包阶段生效**;
+**作用**：构建阶段安装生产依赖时，放行指定包名的 npm 安装脚本（如 `postinstall`）。用于解决 npm 全局配置中 `ignore-scripts=true` 导致某些包安装不完整的问题。
 
-示例：
+```javascript
+allowScripts: {
+  'node': true,
+  '@flun/webauthn-server': true,
+}
+```
+
+- 键为 npm 包名，值为 `true` 表示允许执行该包的安装脚本；
+- **未配置或配置错误时**，工具会警告并使用默认值 `{ node: true }`；
+- 仅在**构建阶段** `npm install --production` 时生效，与 `package.json` 中的 `allowScripts`（npm 安装本项目时使用）场景不同。
+
+> **说明**：如果你在项目 `.npmrc` 中设置了 `ignore-scripts=true`，则应在此配置里显式放行必需的包。
+
+---
+
+### 7. 排除规则
+
+#### 7.1 `excludeFiles`
+
+**作用**：复制项目文件到临时构建目录时，排除指定的文件/目录（支持 glob 模式）。这些模式会**自动转换为 `electron-builder` 的排除规则**（前缀 `!`），因此也会在打包阶段生效。
 
 ```javascript
 excludeFiles: [
@@ -502,43 +593,45 @@ excludeFiles: [
 ]
 ```
 
-- 以 `/` 结尾表示目录及其内容；
-- 以 `./` 开头表示仅匹配根目录下的文件（非递归）；
-- 否则匹配任意路径的该模式（`minimatch` 全局匹配）;
+**匹配规则**：
+- 以 `/` 结尾：匹配该目录及其全部内容（如 `'.git/'`）；
+- 以 `./` 开头：仅匹配项目**根目录**下的文件（非递归，如 `'./yarn.lock'`）；
+- 其他：按 `minimatch` 全局匹配（如 `'*.log'` 匹配任意路径下所有 `.log` 文件）。
 
-> **注意**：依赖现在已预打包,因此不再需要排除 `node_modules`（除非您有特殊需求,但不建议）;
+> **注意**：依赖已被工具主动处理（构建时安装），因此**不建议**排除 `node_modules`。
 
----
+#### 7.2 `excludeDependencies`
 
-### 排除依赖包 (`excludeDependencies`)
-
-从最终安装的依赖列表中移除指定的 npm 包（这些包不会被安装到应用内）;
-常用于排除构建工具自身依赖或无用依赖（如 `@flun/desktop-builder`）;
+**作用**：从最终安装的依赖列表中移除指定的 npm 包（这些包不会被打包到应用中）。
 
 ```javascript
 excludeDependencies: [
-  '@flun/desktop-builder'
+  '@flun/desktop-builder',   // 构建工具自身
+  '@flun/windows',            // 用不到的平台专用包
 ]
 ```
 
----
+- 常用于排除构建工具自身的依赖或已确认无用的包；
+- 排除后的包不会出现在最终的 `node_modules` 中。
 
-### 排除输出文件 (`excludeOutputs`)
+#### 7.3 `excludeOutputs`
 
-在将构建好的安装包从临时目录复制到最终输出目录时,排除某些文件（如 `*.blockmap`、`latest.yml`）;
+**作用**：将构建好的安装包从临时目录复制到最终输出目录时，排除特定文件。
 
 ```javascript
 excludeOutputs: [
   '*.blockmap',
-  'latest.yml'
+  'latest.yml',
 ]
 ```
 
-> 注意：此过滤**不影响** `electron-builder` 的构建过程,仅影响复制到输出目录的文件;
+- 常用于排除自动更新相关文件（如 `*.blockmap`、`latest.yml`）——若你不需要自动更新，可去掉它们；
+- **仅影响复制到输出目录的阶段**，不影响 `electron-builder` 的构建过程。
+
 
 ---
 
-### 代码签名配置 (`build.win.sign` / `build.inno` / `build.mac.sign` / `build.linux.sign`)
+## 🔏 代码签名
 
 本工具已内置跨平台签名适配，**用户只需填写最少的字段，其余转义、拼接、查找、校验均由构建脚本自动完成**。
 
@@ -612,25 +705,7 @@ build: {
 - `signToolParams.certificateFile` 必填，缺失时报 `[错误] signToolParams.certificateFile 必填`；
 - `certificateFile` 指向的文件必须存在，否则报 `[错误] 证书文件不存在: <绝对路径>`。
 
-#### 三、生成自签名测试证书（仅用于本地验证）
-
-正式发布请使用受信任 CA 签发的代码签名证书。若只是想本地验证签名流程，可用 PowerShell 生成一张自签名的代码签名证书：
-
-```powershell
-$pwd = ConvertTo-SecureString -String "证书密码" -Force -AsPlainText
-$cert = New-SelfSignedCertificate `
-  -Type CodeSigningCert `
-  -Subject "CN=Test Code Signing" `
-  -CertStoreLocation Cert:\CurrentUser\My `
-  -NotAfter (Get-Date).AddYears(1)
-Export-PfxCertificate -Cert $cert -FilePath "证书文件路径" -Password $pwd
-```
-
-- `-Type CodeSigningCert` 必须带，否则证书 EKU 不含 Code Signing，`signtool` 会直接过滤掉；
-- 生成的 `.pfx` 可配合 `build.win.sign` 与 `build.inno.signToolParams` 使用；
-- 自签名证书**不被系统信任根**，`signtool verify` 时会提示 `A certificate chain processed, but terminated in a root`，这是预期结果。
-
-#### 四、macOS 签名与公证 (`build.mac.sign`)
+#### 三、macOS 签名与公证 (`build.mac.sign`)
 
 `mac.sign` 中的所有选项在 v27 已统一收拢到 `sign` 对象下，模板中已给出注释示例：
 
@@ -662,7 +737,7 @@ build: {
 | `sign.certificateFile`                    | `CSC_LINK`                         | 证书文件路径     |
 | `sign.certificatePassword`                | `CSC_KEY_PASSWORD`                 | 证书密码         |
 
-#### 五、Linux 包签名 (`build.linux.sign`)
+#### 四、Linux 包签名 (`build.linux.sign`)
 
 `electron-builder` **本身不签名 Linux 包**，实际签名依赖底层工具：`deb` 通过 `dpkg-sig`、AppImage 通过 `appimagetool --sign`，均基于 GPG 密钥。模板中已给出注释示例：
 
@@ -681,143 +756,90 @@ build: {
 
 ---
 
-## 🖥️ 完整配置示例
+#### 五、生成并信任自签名测试证书
 
-以下是一个包含所有常用配置的 `desktopAppConfig.js` 示例：
+**（一）生成证书**
 
-```javascript
-export default {
-  serverPath: './server.js',
-  appUrl: 'http://www.abc.com:7296',
-  appName: 'My Express App',
-  enableLogging: false,
+正式发布请使用受信任 CA 签发的代码签名证书。若只是想本地验证签名流程，可用 PowerShell 生成一张自签名的代码签名证书：
 
-  window: {
-    width: 1280,
-    height: 720,
-    minWidth: 800,
-    minHeight: 600,
-    resizable: true,
-    frame: true,
-    show: false,
-    backgroundColor: '#f0f0f0',
-    webPreferences: {
-      // 以下三项强制覆盖,配置无效
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: false,
-      // 其他有效配置
-      plugins: true,
-      webSecurity: true,
-    },
-  },
-
-  menu: [
-    {
-      label: '文件',
-      submenu: [
-        { role: 'close', label: '关闭' },
-        { type: 'separator' },
-        { role: 'quit', label: '退出' }
-      ]
-    },
-    // ... 其他菜单
-  ],
-
-  build: {
-    appId: 'com.mycompany.myapp',
-    outputDir: './release',
-
-    win: {
-      icon: './build/icon.png',
-    },
-    inno: {
-      appName: 'My App',
-      appVersion: '1.0.0',
-      appPublisher: 'My Company',
-      defaultDirName: '{autopf}\\My App',
-      defaultGroupName: 'My App',
-      outputBaseFilename: 'MyAppSetup',
-      WizardStyle: 'dynamic',
-      WizardImageFile: './build/wizard.bmp',
-      WizardSmallImageFile: './build/wizardSmall.bmp',
-      setupIconFile: './build/setup.ico',
-      uninstallDisplayIcon: './build/uninstallerIcon.ico',
-      createDesktopShortcut: true,
-      createStartMenuShortcut: true,
-      runAfterInstall: true,
-      compression: 'lzma2',
-    },
-
-    mac: {
-      target: ['dmg', 'zip'],
-      // icon: './build/icon.icns',           // 需自备 .icns 文件
-      // 代码签名与公证配置(electron-builder v27: 统一移入 sign 对象)
-      // 公共说明:identity 与 certificateFile 二选一;certificatePassword 留空则自动读 CSC_KEY_PASSWORD
-      // sign: {
-      //   identity: 'Developer ID Application: Your Name (TEAM123)',
-      //   certificateFile: undefined,
-      //   certificatePassword: process.env.CSC_KEY_PASSWORD,
-      //   hardenedRuntime: true,
-      //   entitlements: './build/entitlements.mac.plist',
-      //   entitlementsInherit: './build/entitlements.mac.inherit.plist',
-      // },
-    },
-    dmg: {
-      iconSize: 80,
-      window: { width: 540, height: 380 },
-      background: './build/background.png',
-      backgroundColor: '#ffffff',
-    },
-
-    linux: {
-      target: ['AppImage', 'deb'],
-      category: 'Development',
-      description: '一个功能强大的应用',
-      maintainer: '我的名字 <my@email.com>',
-      vendor: '我的公司',
-      // 代码签名:GPG 签名(deb 通过 dpkg-sig,AppImage 通过 appimagetool)
-      // 公共说明:需先在宿主机安装 GPG 密钥,推荐用环境变量传入
-      // sign: {
-      //   gpgPrivateKey: process.env.GPG_PRIVATE_KEY,
-      //   gpgKeyPassphrase: process.env.GPG_KEY_PASSPHRASE,
-      // },
-    },
-
-    // 额外 electron-builder 字段（示例）
-    compression: 'maximum',
-    extraResources: [{ from: './assets', to: './assets' }],
-  },
-
-  advanced: {
-    autoStartServer: true,
-    autoKillServer: true,
-  },
-
-  allowScripts: {
-    'node': true,
-    '@flun/webauthn-server': true,
-  },
-
-  excludeFiles: [
-    '.vscode/',
-    '.git/',
-    'dist/',
-    '*.log',
-    './yarn.lock',
-    './desktopAppConfig.js',
-  ],
-
-  excludeDependencies: [
-    '@flun/desktop-builder',
-  ],
-
-  excludeOutputs: [
-    '*.blockmap',
-    'latest.yml'
-  ],
-};
+```powershell
+$pwd = ConvertTo-SecureString -String "证书密码" -Force -AsPlainText
+$cert = New-SelfSignedCertificate `
+  -Type CodeSigningCert `
+  -Subject "CN=Test Code Signing" `
+  -CertStoreLocation Cert:\CurrentUser\My `
+  -NotAfter (Get-Date).AddYears(1)
+Export-PfxCertificate -Cert $cert -FilePath "证书文件路径" -Password $pwd
 ```
+
+- `-Type CodeSigningCert` 必须带，否则证书 EKU 不含 Code Signing，`signtool` 会直接过滤掉；
+- 生成的 `.pfx` 可配合 `build.win.sign` 与 `build.inno.signToolParams` 使用；
+- **自签名证书默认不被系统信任**：`signtool verify` 时会提示 `A certificate chain processed, but terminated in a root`。可按下方（二）把证书公钥导入**目标机器**的受信任根；导入后该机器即完全信任，不再报警。
+
+**（二）让目标机器信任证书**
+自签名证书要生效，需将其**公钥部分**（不含私钥）导入系统的「受信任根证书颁发机构」。**切勿将带私钥的 `.pfx` 导入受信任根**——那等同于公开签名权。
+
+**第一步：导出公钥（`.cer` 文件，不含私钥）**
+
+```powershell
+$pfx = "证书文件路径"
+$cer = "公钥输出路径"
+
+$cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfx, "证书密码")
+$pubBytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
+[System.IO.File]::WriteAllBytes($cer, $pubBytes)
+```
+
+**第二步：把 `.cer` 导入受信任根**——三种方式任选：
+
+**方式一：双击导入（图形界面，最简单）**
+
+- Windows：双击 `.cer` → 「安装证书」→ 选择「本地计算机」（需管理员）或「当前用户」→ 「将所有的证书都放入下列存储」→ 选择「**受信任的根证书颁发机构**」→ 完成。若弹出安全警告，点「是」。
+- macOS：双击 `.cer` → 自动打开「钥匙串访问」→ 将证书拖入「系统」或「登录」钥匙串 → 双击该证书 → 展开「信任」→ 将「使用此证书时」设为「**始终信任**」→ 关闭窗口时输入系统密码保存。
+- Linux（桌面发行版）：将 `.cer` 复制到 `/usr/local/share/ca-certificates/`（文件后缀改为 `.crt`），然后执行 `sudo update-ca-certificates`。
+
+**方式二：命令行导入（可脚本化）**
+
+- Windows（管理员 PowerShell / CMD）：
+  ```
+  certutil -addstore Root "证书公钥.cer"
+  ```
+  （加 `-user` 参数则导入「当前用户」而非「本地计算机」）
+
+- macOS：
+  ```
+  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "证书公钥.cer"
+  ```
+
+- Linux（Debian / Ubuntu）：
+  ```
+  sudo cp "证书公钥.cer" /usr/local/share/ca-certificates/自定名.crt
+  sudo update-ca-certificates
+  ```
+  （CentOS / RHEL 使用 `sudo cp ... /etc/pki/ca-trust/source/anchors/` 后执行 `sudo update-ca-trust`）
+
+**方式三：企业内网批量分发**
+
+- Windows 域环境：通过组策略（GPO）推送证书到所有域机器的「受信任根证书颁发机构」；
+- macOS：通过 MDM（如 Jamf、Munki）或配置描述文件下发；
+- Linux：通过 Ansible、Puppet 等自动化工具批量部署。
+
+**适用场景**（以下均可让目标机器信任自签名证书）：
+
+- **个人多台设备**：自己开发者的 PC、笔记本、虚拟机等，每台各导入一次；
+- **团队协作**：团队成员把公钥导入各自电脑，团队成员间共享可信任的安装包；
+- **公司内网**：IT 部门通过组策略 / MDM / 自动化工具，把公钥分发到内网所有机器；
+- **CI/CD 构建机**：构建服务器导入公钥后，产出的安装包在部署环境（若也导入了同一公钥）里不再报警；
+- **测试环境**：QA、预发布机器导入后，测试安装流程无需手动跳过警告；
+- **虚拟机模板 / 镜像**：把公钥打进系统镜像，新开的虚拟机天然信任。
+
+**不适用场景**（以下必须使用受信任 CA 签发的证书）：
+
+- **公开发布给陌生用户**：下载方未导入你的公钥，仍会提示「未知发布者」，Windows SmartScreen 也会拦截；
+- **上架应用商店**：各商店要求使用受信任 CA 或平台专属证书；
+- **企业对外分发**：客户/合作伙伴无法接受"手动导入你的公钥"这种前置步骤。
+
+公开分发请购买受信任 CA 签发的代码签名证书（OV 或 EV）。
 
 ---
 
@@ -828,13 +850,11 @@ export default {
 - **构建时**会自动执行 `npm install --production`,将 `node_modules` 完整打包进应用;
 - **用户首次启动无需联网**,开箱即用;
 - **安装包体积会增大,构建和安装时间会增长**（包含依赖）,但这是换取流畅用户体验的代价;
-> **如果你希望更好的体验请安装 v4.0.0 ,将带给你不一样的体验;
-
 ### 如何回退到运行时安装依赖（旧行为）
 
 如果您希望减小安装包体积,减少构建和安装时间,并允许用户首次启动时联网安装依赖,请安装 `v2.1.7` 及以下版本（不推荐）;
 
-> **注意**：在当前版本中,强行排除 `node_modules` 会导致应用无法启动,因为 Electron 需要依赖来运行后端服务;因此请保持默认行为;
+> **注意**：在当前版本中,强行排除 `node_modules` 会导致应用无法启动,因为 Electron 需要依赖来运行 Node.js 项目;因此请保持默认行为;
 
 ### 优化建议
 
@@ -871,7 +891,7 @@ export default {
 
 ### 2. 构建失败,提示 `electron-builder` 相关错误
 - 确保网络畅通,首次构建需下载 Electron 运行时（约 100MB）;
-- 可尝试设置镜像环境变量（构建脚本已自动配置国内镜像,如 `ELECTRON_MIRROR`）;
+- 可尝试设置镜像环境变量（构建脚本已自动配置中国镜像,如 `ELECTRON_MIRROR`）;
 
 ### 3. 应用版本号如何设置？
 - 版本号取自项目根目录下 `package.json` 的 `version` 字段,请直接修改该文件;
@@ -886,7 +906,7 @@ export default {
 - 该特殊标记会被替换为“在系统默认浏览器中打开应用地址”的功能,方便用户测试;
 
 ### 7. 为什么我设置了 `nodeIntegration: false`,但应用仍然能访问 Node.js？
-- 如上方“窗口配置”警告所述,本工具为了自动启动后端服务,**强制启用了 `nodeIntegration` 并关闭了 `contextIsolation` 和 `sandbox`**;这是设计上的必要妥协,但确实降低了安全性；**请勿在应用中加载外部网页或不可信内容**;
+- 如上方“窗口配置”警告所述,本工具为了自动启动 Node.js 子进程,**强制启用了 `nodeIntegration` 并关闭了 `contextIsolation` 和 `sandbox`**;这是设计上的必要妥协,但确实降低了安全性；**请勿在应用中加载外部网页或不可信内容**;
 
 ### 8. 构建后的应用必须联网才能使用吗？
 - **默认（v3.0.0+）**：不需要,依赖已打包,可离线运行;
