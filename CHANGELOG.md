@@ -1,4 +1,11 @@
 ﻿# 变更日志
+## [5.1.4] - 2026-10-03 17:30
+### 修复
+- **依赖快照机制完善**：原逻辑仅在 `npm install` **成功完成后**才写入 `.deps-snapshot.json`，但若安装过程中断（Ctrl+C、关窗口、断电等），`node_modules` 可能处于半成品状态（部分包目录存在但内部文件缺失），而**旧的快照文件仍然保留且与当前依赖声明一致**，导致后续所有构建都判定"依赖未变化,跳过安装"，残缺状态被永久保留；
+  - 典型症状：打包后运行应用时报 `Cannot find package 'xxx'`（如 `ip-address`），但该包在 `node_modules` 顶层目录中存在；
+  - 修复方式：**安装前先删除快照文件**，仅在 `npm install` **成功完成后**才写回新快照；这样任何中断都会留下"快照缺失"的状态，下次构建自动触发完整重装；
+  - 利用文件系统的原子性（`unlink` 是原子操作）与"存在即完整"的约定（快照文件存在 ⟺ 上次安装完整成功），比记录"完整安装标志位"更简洁可靠。
+
 ## [5.1.3] - 2026-10-03 11:57
 ### 优化
 - **签名配置早期校验(构建前)**：将 `build.win.sign` 与 `build.inno` 签名的所有配置校验提前到构建开始前(复制文件之前),任何配置错误均在 **1 秒内**报错退出,用户不再需要等几分钟打包完成才发现配置错误;
@@ -10,15 +17,3 @@
 ## [5.1.2] - 2026-10-03 09:01
 ### 优化
 - 优化配置模板和说明文件的配置示例
-
-## [5.1.1] - 2026-10-02 22:51
-### 紧急修复
-- **默认禁用 ASAR 打包**：electron-builder v27 默认启用 asar（不传 `asar` 字段即启用），导致打包后 `resources/app` 真实目录被 `app.asar` 替代。本工具的运行架构是「Electron 主进程 + 独立 Node 后端子进程」，而外部 Node 进程无法读取 asar 内文件（`child_process.spawn` 不支持 asar 内路径，工作目录也不能指向 asar 虚拟路径），造成应用启动后立即退出（ExitCode 0）、页面 `ERR_CONNECTION_REFUSED`；现于 `build.js` 的 `configObj` 中**显式设置 `asar: false`**，恢复 `resources/app` 真实目录结构；
-- **后端服务不再依赖系统 Node**：`electron-main.js` 原使用 `spawn('node', [serverPath], ...)` 启动后端服务，实际依赖用户机器上已安装 Node（与 README 中"使用 Electron 自带 Node.js"的说明不符）；现改用 `spawn(process.execPath, [serverPath], ...)` 并注入环境变量 `ELECTRON_RUN_AS_NODE: '1'`，直接使用 Electron 内置 Node 运行时，用户无需在机器上安装 Node；运行时已验证：后端进程的可执行文件为 `deskApp.exe`（而非 `node.exe`），系统中无任何 `node.exe` 被创建；
-- **`node_modules` 检查方式修正**：`electron-main.js` 原使用 `fs.promises.access(nodeModulesPath, ...)` 判断依赖目录是否存在，该 API 在 Electron 主进程中对某些路径场景（如虚拟文件系统）支持不完整，会误判为"缺失"并退出；现改为同步的 `fs.existsSync`，判断更直接可靠。
-
-### 移除
-- **配置模板移除 `asar` 字段**：`desktopAppConfig.js` 中删除 `build.asar` 及其注释。ASAR 与「Electron + Node 后端子进程」的架构天然不兼容，保留该字段只会误导用户；如未来需要支持，应以独立功能形式加入，而非默认开启。
-
-### 优化
-- **README 新增「为何禁用 ASAR」说明**：在「简介」章节说明 asar 的设计用途、与 Node 后端子进程的冲突点，以及本工具选择禁用 asar 的决策依据。

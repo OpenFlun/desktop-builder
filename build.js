@@ -192,6 +192,8 @@ const build = async () => {
     }
     if (shouldInstall) {
         console.log(chalk.blue('[信息] 正在安装依赖...'));
+        // 安装前先删除快照:若安装过程中断,快照缺失会触发下次强制重装
+        await fs.remove(snapshotPath);
         await execa('npm', ['install', '--production', '--no-audit', '--no-fund', '--no-package-lock'], {
             cwd: tempDir, stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' }
         });
