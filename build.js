@@ -25,6 +25,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
      */
     resolveSignTool = async name => {
         if (!name) return null;
+        name = String(name).trim();
         if (/[\\/]/.test(name) || /^[a-zA-Z]:/.test(name)) return (await fs.pathExists(name)) ? name : null;
         try {
             const { stdout } = await execa('where', [name], { reject: false });
@@ -108,6 +109,48 @@ const build = async () => {
             await resolveCertFile(certFile);
         }
     }
+    // macOS 早期配置校验(与 Windows 对齐,避免走到打包阶段才报错)
+    if (process.platform === 'darwin') {
+        const macCfg = buildConfig.mac || {}, macSign = macCfg.sign;
+        if (macSign && macSign.certificateFile) await resolveCertFile(macSign.certificateFile);
+        if (macCfg.notarize !== undefined && typeof macCfg.notarize !== 'boolean') {
+            console.error(chalk.red('[错误] build.mac.notarize 必须为 boolean(true/false),不能是对象'));
+            process.exit(1);
+        }
+        // 公证凭据检查:notarize 不为 false 时,凭据必须完整(与 electron-builder 行为一致)
+        if (macCfg.notarize === true) {
+            const env = process.env,
+                appleIdGroup = ['APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'],
+                appleApiGroup = ['APPLE_API_KEY', 'APPLE_API_KEY_ID', 'APPLE_API_ISSUER'],
+                keychainGroup = ['APPLE_KEYCHAIN', 'APPLE_KEYCHAIN_PROFILE'],
+                hasAny = g => g.some(k => env[k]), hasAll = g => g.every(k => env[k]),
+                checkGroup = (g, name) => {
+                    if (hasAny(g) && !hasAll(g)) {
+                        const missing = g.filter(k => !env[k]);
+                        console.error(chalk.red(`[错误] 公证凭据不完整(方式:${name}),缺少环境变量: ${missing.join(', ')}`));
+                        console.error(chalk.yellow('[提示] 设置凭据后才会自动公证;如不需要公证,请在 build.mac 中显式设置 notarize: false'));
+                        process.exit(1);
+                    }
+                };
+            checkGroup(appleIdGroup, 'Apple ID');
+            checkGroup(appleApiGroup, 'API Key');
+            checkGroup(keychainGroup, 'Keychain Profile');
+        }
+    }
+    // Linux 早期配置校验
+    if (process.platform === 'linux') {
+        const linuxSign = buildConfig.linux?.sign;
+        if (linuxSign) {
+            const hasKey = !!linuxSign.gpgPrivateKey, hasPass = !!linuxSign.gpgKeyPassphrase;
+            if (hasKey !== hasPass) {
+                console.error(chalk.red('[错误] build.linux.sign 的 gpgPrivateKey 与 gpgKeyPassphrase 必须同时配置'));
+                if (hasKey) console.error(chalk.yellow('[提示] 已配置 gpgPrivateKey,但缺少 gpgKeyPassphrase'));
+                else console.error(chalk.yellow('[提示] 已配置 gpgKeyPassphrase,但缺少 gpgPrivateKey'));
+                process.exit(1);
+            }
+        }
+    }
+
 
     const origPkg = await fs.readJson(origPkgPath), { name: pkgName, version: pkgVersion, author: pkgAuthor } = origPkg,
         appName = userAppName || pkgName || 'deskApp',
@@ -255,37 +298,65 @@ const build = async () => {
             darwin: (cfg, userMacCfg, userDmgCfg) => {
                 cfg.mac ??= {};
                 if (!cfg.mac.target) cfg.mac.target = ['dmg', 'zip'];
-                Object.assign(cfg.mac, userMacCfg || {});
-                cfg.dmg = { iconSize: 80, window: { width: 540, height: 380 }, ...cfg.dmg, ...userDmgCfg };
                 const envExtra = {};
                 if (userMacCfg?.sign) {
                     const s = userMacCfg.sign;
                     if (s.certificateFile || s.identity) envExtra.CSC_IDENTITY_AUTO_DISCOVERY = 'true';
                     if (s.certificateFile) envExtra.CSC_LINK = s.certificateFile;
                     if (s.certificatePassword) envExtra.CSC_KEY_PASSWORD = s.certificatePassword;
+                    // 剥离非 electron-builder v27 官方字段,避免 additionalProperties:false 拒绝
+                    delete s.certificateFile;
+                    delete s.certificatePassword;
+                    delete s.notarize;
                 }
+                Object.assign(cfg.mac, userMacCfg || {});
+                cfg.dmg = { iconSize: 80, window: { width: 540, height: 380 }, ...cfg.dmg, ...userDmgCfg };
                 return { args: ['--mac'], subDir: '', envExtra };
             },
             linux: (cfg, userLinuxCfg) => {
                 cfg.linux ??= {};
                 if (!cfg.linux.target) cfg.linux.target = ['AppImage', 'deb'];
                 if (!cfg.linux.category) cfg.linux.category = 'Utility';
-                Object.assign(cfg.linux, userLinuxCfg || {});
-                if (!cfg.linux.icon && userLinuxCfg?.icon) cfg.linux.icon = userLinuxCfg.icon;
                 const envExtra = {};
                 if (userLinuxCfg?.sign) {
                     const s = userLinuxCfg.sign;
                     if (s.gpgPrivateKey) envExtra.GPG_PRIVATE_KEY = s.gpgPrivateKey;
                     if (s.gpgKeyPassphrase) envExtra.GPG_KEY_PASSPHRASE = s.gpgKeyPassphrase;
+                    // 剥离非 electron-builder v27 官方字段,避免 additionalProperties:false 拒绝
+                    delete userLinuxCfg.sign;
                 }
+                Object.assign(cfg.linux, userLinuxCfg || {});
+                if (!cfg.linux.icon && userLinuxCfg?.icon) cfg.linux.icon = userLinuxCfg.icon;
                 return { args: ['--linux'], subDir: '', envExtra };
             }
         };
     if (!platformHandlers[platform]) console.error(chalk.red(`[错误] 不支持的操作系统: ${platform}`)), process.exit(1);
 
-    const handlerResult = await platformHandlers[platform](configObj, userWin, userMac, userDmg),
+    const handlerArgs = platform === 'win32' ? [userWin]
+        : platform === 'darwin' ? [userMac, userDmg]
+        : [userLinux];
+    const handlerResult = await platformHandlers[platform](configObj, ...handlerArgs),
         platformArgs = handlerResult.args, subDir = handlerResult.subDir, envExtra = handlerResult.envExtra || {},
         appDir = path.join(output, subDir), configFile = path.join(tempDir, 'builder.json');
+    // 钩子路径归一化:electron-builder 要求钩子文件必须位于 --project (tempDir) 内
+    // 支持用户填相对路径(相对项目根)或绝对路径;工具自动复制到 tempDir 并改写为 tempDir 内绝对路径
+    const HOOK_FIELDS = ['beforeBuild', 'beforePack', 'afterExtract', 'afterPack', 'afterSign',
+        'artifactBuildStarted', 'artifactBuildCompleted', 'afterAllArtifactBuild', 'onNodeModuleFile'];
+    for (const field of HOOK_FIELDS) {
+        const hookValue = configObj[field];
+        if (typeof hookValue !== 'string' || !hookValue) continue;
+        const absHookPath = path.isAbsolute(hookValue) ? hookValue : path.resolve(process.cwd(), hookValue);
+        if (!(await fs.pathExists(absHookPath)))
+            console.error(chalk.red(`[错误] 钩子文件不存在: ${absHookPath} (字段 build.${field})`)), process.exit(1);
+        const relToTemp = path.relative(tempDir, absHookPath);
+        if (relToTemp.startsWith('..') || path.isAbsolute(relToTemp)) {
+            const dest = path.join(tempDir, path.basename(absHookPath));
+            await fs.copy(absHookPath, dest, { overwrite: true });
+            configObj[field] = dest;
+        } else {
+            configObj[field] = absHookPath;
+        }
+    }
     await fs.writeJson(configFile, configObj, { spaces: 2 });
     // 构建可执行文件（electron-builder）
     let retries = 2, lastError = null, success = false;

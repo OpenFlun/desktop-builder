@@ -116,15 +116,6 @@ export default {
 			npmRebuild: false               // 默认不重编译原生模块,减少构建时间
 		},
 
-		// 工具集配置:指定构建时使用的辅助工具版本
-		// wine: 'system' = 使用宿主机已安装的 Wine
-		// 用于在 macOS 上构建 Windows 目标,需先执行: brew install --cask wine-stable
-		// electron-builder v27 变更:显式锁定 wine 版本,避免默认值静默漂移
-		// macOS 上构建 Windows 目标时需宿主机安装 Wine: brew install --cask wine-stable
-		toolsets: {
-			wine: 'system'
-		},
-
 		// Win 平台配置
 		win: {
 			icon: './build/icon.png',      // 应用图标（.png 格式）,用于快捷方式和文件图标,建议 512x512 PNG
@@ -253,29 +244,31 @@ export default {
 		// macOS 配置
 		mac: {
 			target: ['zip', 'dmg'],          // 构建目标：dmg / zip / pkg / mas 等
-			// icon: './build/icon.icns',       // 应用图标(.icns,需自备,建议 512x512)
-			// 代码签名与公证配置:启用后应用可通过 macOS Gatekeeper 验证
-			// 公共说明:identity 与 certificateFile 二选一;certificatePassword 留空则自动读 CSC_KEY_PASSWORD;
-			//           certificateFile 留空则自动读 CSC_LINK;identity 留空则自动读 CSC_NAME 环境变量
-			// electron-builder v27 变更:所有 macOS 签名选项统一移入 sign 对象
+			// icon: './build/icon.icns',    // 应用图标(.icns,需自备,建议 512x512)
+			// 公证开关(electron-builder v27 官方规范:位于 mac 下,boolean 类型,不是对象)
+			notarize: false,                 // 显式关闭自动公证;设为 true 时本工具会在构建前检查公证凭据;不配置则透传给 electron-builder
+			// 代码签名配置(electron-builder v27 官方规范:签名选项统一收拢到 sign 对象)
+			// 公共说明:identity 留空则自动读 CSC_NAME;证书文件与密码必须通过环境变量
+			//           CSC_LINK / CSC_KEY_PASSWORD 传入,不写在配置里
+			// 公证凭据(环境变量,以下三种方式任选其一):
+			//   1) APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
+			//   2) APPLE_API_KEY + APPLE_API_KEY_ID + APPLE_API_ISSUER (CI 推荐)
+			//   3) APPLE_KEYCHAIN + APPLE_KEYCHAIN_PROFILE
+			// 校验说明:三种凭据方式任选其一,但必须配齐;只配部分会在构建前报错退出
 			// sign: {
-			//     identity: 'Developer ID Application: Your Name (TEAM123)',  // 签名证书名称(与 certificateFile 二选一)
-			//     certificateFile: undefined,                                 // 证书文件路径(.p12,与 identity 二选一)
-			//     certificatePassword: process.env.CSC_KEY_PASSWORD,          // 证书密码(推荐用环境变量)
+			//     identity: 'Developer ID Application: Your Name (TEAM123)',  // 签名证书名称或 SHA-1
 			//     hardenedRuntime: true,                                      // 启用 Hardened Runtime(公证必需)
 			//     entitlements: './build/entitlements.mac.plist',             // 签名 entitlements 文件(需自备)
 			//     entitlementsInherit: './build/entitlements.mac.inherit.plist', // Helper 进程 entitlements(需自备)
-			//     // 公证配置:如需自动公证,取消注释并填写(需 Apple Developer 账号)
-			//     // notarize: {
-			//     //     teamId: 'TEAM123',
-			//     //     appleId: 'your@email.com',
-			//     //     appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
-			//     // },
+			//     // 兼容说明:本工具额外接受以下两个便利字段,构建时会自动剥离
+			//     // 并转换为 CSC_LINK / CSC_KEY_PASSWORD 环境变量(不写入 builder.json)
+			//     // certificateFile: './build/cert.p12',
+			//     // certificatePassword: process.env.CSC_KEY_PASSWORD,
 			// },
 		},
 		// macOS DMG 选项
 		dmg: {
-			iconSize: 80,                		 // 图标大小
+			iconSize: 80,                            // 图标大小
 			window: { width: 540, height: 380 }, // DMG 窗口尺寸
 			// 以下为增强选项（可选）
 			// background: './build/background.png',    // DMG 背景图片（建议 PNG） 540×380
@@ -309,13 +302,16 @@ export default {
 			//     Terminal: false,
 			//     Type: 'Application'
 			// },
-			// },
 			// Linux 启动器说明:所有 Linux 目标通过 <executableName>-launcher 脚本启动
 			// executableArgs 会被注入 launcher 脚本,生成的 .desktop Exec 指向该脚本
 			// electron-builder v27 变更:syncDesktopName 已被移除,行为变为始终同步 .desktop 文件名与窗口类名
 			// 代码签名:GPG 签名(deb 通过 dpkg-sig,AppImage 通过 appimagetool)
-			// 公共说明:electron-builder 本身不签名 Linux 包,签名由底层工具完成;
-			//           需先在宿主机安装 GPG 密钥,推荐用环境变量传入密钥与密码
+			// 公共说明:electron-builder v27 的 linux 配置下没有 sign 字段;
+			//           GPG 签名通过环境变量 GPG_PRIVATE_KEY / GPG_KEY_PASSPHRASE 触发
+			//           使用前请确保宿主机已安装 dpkg-sig、appimagetool 及对应的 GPG 密钥
+			// 兼容说明:本工具额外接受 linux.sign 作为便利字段,构建时会自动剥离
+			//           并转换为上述环境变量(不写入 builder.json)
+			// 校验说明:gpgPrivateKey 与 gpgKeyPassphrase 必须同时配置,只配其一构建前报错退出
 			// sign: {
 			//     gpgPrivateKey: process.env.GPG_PRIVATE_KEY,       // GPG 私钥(ASCII-armored 内容)
 			//     gpgKeyPassphrase: process.env.GPG_KEY_PASSPHRASE, // GPG 密钥密码

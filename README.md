@@ -1,6 +1,6 @@
 # @flun/desktop-builder
 
-> 将任意 Node.js 项目一键打包为当前桌面应用 (Windows, macOS, Linux)（基于 Electron）,支持高度自定义配置;
+> 将任意 Node.js 项目一键打包为当前平台的桌面应用 (Windows, macOS, Linux)（基于 Electron）,支持高度自定义配置;
 
 [![npm version](https://img.shields.io/npm/v/@flun/desktop-builder.svg)](https://www.npmjs.com/package/@flun/desktop-builder)
 [![license](https://img.shields.io/npm/l/@flun/desktop-builder.svg)](https://github.com/OpenFlun/desktop-builder/blob/main/LICENSE)
@@ -16,6 +16,8 @@
 - 该工具会将您的 **Node.js 项目**（含所有业务代码、资源文件与依赖）与 Electron 前端整合，打包为一个独立的桌面应用;
 - **Electron 本身内置了 Node.js 运行时**,因此打包后的应用在启动时,会使用**自带的 Node.js** 在后台自动运行您的 Node.js 项目;
 - 最终用户**无需在电脑上安装 Node.js 或任何其他运行时环境**,双击桌面图标即可直接使用;
+
+- 本包采用 ESM 书写（`package.json` 中 `"type": "module"`），包括 `postinstall` 自动复制到你项目根目录的示例 `desktopAppConfig.js`, 如果你的项目为 CJS 请修改导出方式为 `module.exports = { ... }`;
 
 **关于 asar 打包**：本工具**不支持也不建议启用** ASAR 打包（electron-builder 的 `asar` 配置）。原因如下：
 
@@ -51,7 +53,7 @@
 
 ## 📁 包结构
 
-安装后包内结构如下（也可参考项目根目录被自动复制出的文件）：
+包结构如下（也可参考项目根目录被自动复制出的文件）：
 
 ```
 @flun/desktop-builder/
@@ -95,9 +97,9 @@
   - 官网:https://jrsoftware.org/isdl.php
   - 中国 https://gitee.com/OpenFlun/inno-setup/releases
 
-1. 大部分情况下无需手动下载,当前版本以植入自动下载安装;
+1. 大部分情况下无需手动下载,当前版本已内置自动下载安装;
 2. 安装版手动安装时一定要选择默认安装路径,不然会因为找不到文件而构建失败;
-3. 如果你是在中国下载的便捷版压缩文件,请解压到 "C:\Users\你的用户名\.electron-builder-cache" 下(Windows);
+3. 如果你是在中国下载的便携版压缩文件,请解压到 "C:\Users\你的用户名\.electron-builder-cache" 下(Windows);
 
 ---
 
@@ -122,7 +124,7 @@ npm install -D @flun/desktop-builder
 ```javascript
 export default {
   serverPath: './server.js',          // Node.js 项目入口路径
-  appUrl: 'http://www.abc.com:7296',  // 启动后访问的地址
+  appUrl: 'http://localhost:7296',  // 启动后访问的地址
   appName: '我的桌面应用',             // 应用显示名称
 };
 ```
@@ -173,13 +175,13 @@ await build();
 
 `build` 子字段概览：
 
-| 子字段                                                                                    | 作用                        | 详细说明                                               |
-| ----------------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------ |
-| `build.appId` / `outputDir` / `publisher` / `shortcutName` / `nativeModules` / `toolsets` | 通用打包配置                | [4.1 通用字段](#41-通用字段)                           |
-| `build.win`                                                                               | Windows 平台配置            | [4.2 Windows](#42-windows-buildwin)                    |
-| `build.inno`                                                                              | Windows Inno Setup 安装程序 | [4.3 Inno Setup](#43-inno-setup-buildinno)             |
-| `build.mac` / `build.dmg`                                                                 | macOS 应用与 DMG 卷宗       | [4.4 macOS 与 DMG](#44-macos-与-dmg-buildmac-builddmg) |
-| `build.linux`                                                                             | Linux 应用与包格式          | [4.5 Linux](#45-linux-buildlinux)                      |
+| 子字段                                                                       | 作用                        | 详细说明                                               |
+| ---------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------ |
+| `build.appId` / `outputDir` / `publisher` / `shortcutName` / `nativeModules` | 通用打包配置                | [4.1 通用字段](#41-通用字段)                           |
+| `build.win`                                                                  | Windows 平台配置            | [4.2 Windows](#42-windows-buildwin)                    |
+| `build.inno`                                                                 | Windows Inno Setup 安装程序 | [4.3 Inno Setup](#43-inno-setup-buildinno)             |
+| `build.mac` / `build.dmg`                                                    | macOS 应用与 DMG 卷宗       | [4.4 macOS 与 DMG](#44-macos-与-dmg-buildmac-builddmg) |
+| `build.linux`                                                                | Linux 应用与包格式          | [4.5 Linux](#45-linux-buildlinux)                      |
 
 签名相关的操作（证书生成、信任配置、各平台签名细节）统一在 [🔏 代码签名](#-代码签名) 章节说明。
 
@@ -331,9 +333,6 @@ build: {
   nativeModules: {
     npmRebuild: false,                // 不重编译原生模块,减少构建时间
   },
-  toolsets: {
-    wine: 'system',                   // 使用宿主机已安装的 Wine(macOS 上构建 Windows 目标时)
-  },
   // ... 其他 electron-builder 字段可自由添加
 }
 ```
@@ -343,7 +342,7 @@ build: {
 - **`publisher`**：发布者名称，用于安装程序信息；不填则从 `package.json` 的 `author` 读取。
 - **`shortcutName`**：快捷方式显示名称；不填则使用 `appName`。
 - **`nativeModules.npmRebuild`**：是否重编译原生模块。设为 `false` 可跳过重编译，减少构建时间（默认 `false`）。
-- **`toolsets.wine`**：辅助工具版本配置。`'system'` 表示使用宿主机已安装的 Wine（用于在 macOS 上构建 Windows 目标）。
+- **`toolsets`**：electron-builder 的官方字段，会被原样写入 `builder.json`。但本工具**只构建当前运行平台**，`toolsets` 不会改变构建结果——它只在与 electron-builder 的跨平台构建能力配合时才有意义。本工具不提供跨平台构建入口，因此**不建议配置此字段**；若你仍写入，构建不会被阻断，但也不会有任何效果。
 
 #### 4.2 Windows (`build.win`)
 
@@ -486,7 +485,7 @@ build: {
   mac: {
     target: ['zip', 'dmg'],          // 构建目标：dmg / zip / pkg / mas 等
     // icon: './build/icon.icns',    // 应用图标（.icns，需自备）
-    // sign: { ... }                 // 签名与公证 → 详见「🔏 代码签名」章节
+    // sign: { ... }                 // 签名配置（公证开关在 mac.notarize）→ 详见「🔏 代码签名」章节
     // ... 其他 electron-builder 的 mac 字段可自由添加
   },
   dmg: {
@@ -507,7 +506,7 @@ build: {
 
 - **`mac.target`**：构建目标格式。`dmg` 为磁盘映像，`zip` 常用于自动更新，`pkg` 为安装包，`mas` 为 Mac App Store 专用。
 - **`mac.icon`**：`.icns` 格式图标，需自备（工具包内仅提供跨平台 PNG，不含 `.icns`）。
-- **`mac.sign`**：macOS 签名与公证配置。**详细配置与操作请见 [🔏 代码签名 → 四、macOS 签名与公证](#三macos-签名与公证-buildmacsign)**。
+- **`mac.sign`**：macOS 签名配置；公证开关在 `mac.notarize`（boolean）。**详细配置与操作请见 [🔏 代码签名 → 三、macOS 签名与公证 (mac.notarize)](#三macos-签名与公证-macnotarize)**。
 - **`dmg.*`**：DMG 卷宗外观，全部为可选增强项，不配置则使用默认样式。
 
 > **扩展说明**：`build.mac` 与 `build.dmg` 支持直接添加 `electron-builder` 官方支持的任何 macOS / DMG 字段。
@@ -527,7 +526,7 @@ build: {
     // vendor: '我的公司',
     // executableArgs: ['--enable-features=...'],
     // desktop: { entry: { Name: '我的应用', Comment: '...', ... } }, // 自定义 .desktop 文件
-    // sign: { ... }                 // GPG 签名 → 详见「🔏 代码签名」章节
+    // sign: { ... }                 // GPG 签名（本工具便利字段，构建时剥离并转环境变量）→ 详见「🔏 代码签名」章节
     // ... 其他 electron-builder 的 linux 字段可自由添加
   },
 }
@@ -536,7 +535,7 @@ build: {
 - **`linux.target`**：可同时指定多种格式，构建时会生成多个安装包。
 - **`category`**：系统菜单中的分类，如 `Utility` / `Network` / `Development`。
 - **Linux 图标**：无需显式配置，只需在 `./build` 目录下提供 `icon.png`（建议 512×512 PNG），工具会自动识别。
-- **`linux.sign`**：Linux 包的 GPG 签名配置。**详细配置与操作请见 [🔏 代码签名 → 五、Linux 包签名](#四linux-包签名-buildlinuxsign)**。
+- **`linux.sign`**：本工具提供的**便利字段**（非 electron-builder 官方字段），用于配置 Linux 包的 GPG 签名，构建时会自动剥离并转换为环境变量。**详细配置与操作请见 [🔏 代码签名 → 四、Linux 包签名](#四linux-包签名)**。
 
 > **扩展说明**：`build.linux` 支持直接添加 `electron-builder` 官方支持的任何 Linux 字段。
 
@@ -686,14 +685,14 @@ build: {
 **自动兜底机制**：
 
 1. **`signingTool` 自动查找**：填 `'signtool.exe'` 时，构建脚本会按以下顺序查找完整路径：
-   - 若填的是绝对路径 → 直接验证存在性；
+   - 若填的是工具路径（相对或绝对均可） → 直接验证存在性；
    - 否则调用 `where signtool.exe` 查 `PATH`；
    - 再依次扫描 `%ProgramFiles(x86)%\Windows Kits\10\bin\<版本>\<arch>\signtool.exe`（`x64` / `x86` / `arm64`，版本从高到低）。
    - 全部失败时给出中文提示并终止，**不会静默使用错误的工具**。
 2. **`signToolParams` 对象自动拼接**：`build.js` 会自动拼成 `sign /f "证书" /p "密码" /fd 算法 $f`，并自动完成 Inno Setup 所需的 `$q` 引号转义，用户**无需关心任何转义字符**。
 3. **合法性校验**：
    - `certificateFile` 必填，且文件必须存在；
-   - `signingTool` 解析出的工具名若含空白或 `=`，则报错退出（其他字符全部放行）。
+   - `signingTool` 只需填写工具名（如 `signtool.exe`，自动查找）或工具路径（相对或绝对均可），首尾空格会被自动忽略。
 4. **`SignTool` 指令生成**：脚本自动将工具名写入 `.iss` 的 `[Setup]` 段，并通过 `/S<name>=...` 命令行参数向 ISCC 传入完整命令，符合 Inno Setup 官方规范。
 
 **配置严格校验（构建前）**：
@@ -705,54 +704,74 @@ build: {
 - `signToolParams.certificateFile` 必填，缺失时报 `[错误] signToolParams.certificateFile 必填`；
 - `certificateFile` 指向的文件必须存在，否则报 `[错误] 证书文件不存在: <绝对路径>`。
 
-#### 三、macOS 签名与公证 (`build.mac.sign`)
+#### 三、macOS 签名与公证 (mac.notarize)
 
-`mac.sign` 中的所有选项在 v27 已统一收拢到 `sign` 对象下，模板中已给出注释示例：
+按照 electron-builder v27 官方规范：签名选项位于 `mac.sign` 下，公证开关位于 `mac.notarize` 下（**boolean 类型**，不是对象）。
 
 ```js
 build: {
   mac: {
+    notarize: false,                         // boolean；false 显式关闭；true 时本工具构建前检查凭据；不配置则透传给 electron-builder
     sign: {
-      identity: 'Developer ID Application: Your Name (TEAM123)',  // 与 certificateFile 二选一
-      certificateFile: undefined,                                 // .p12 路径
-      certificatePassword: process.env.CSC_KEY_PASSWORD,
-      hardenedRuntime: true,                                      // 公证必需
+      identity: 'Developer ID Application: Your Name (TEAM123)',  // 签名身份（名称或 SHA-1）
+      hardenedRuntime: true,                 // 公证必需（darwin 构建默认 true）
       entitlements: './build/entitlements.mac.plist',
       entitlementsInherit: './build/entitlements.mac.inherit.plist',
-      notarize: {                                                 // 自动公证（需 Apple 账号）
-        teamId: 'TEAM123',
-        appleId: 'your@email.com',
-        appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
-      },
+      // ... 其他 ElectronSignOptions 字段（timestamp、requirements 等）
     },
   },
 }
 ```
 
-**环境变量兜底**：若用户未在配置中填写，`build.js` 会自动识别并注入以下环境变量给 `electron-builder`：
+**公证凭据必须通过环境变量传入**（不能写在配置里），以下三种方式任选其一：
 
-| 配置字段                                  | 对应环境变量                       | 说明             |
-| ----------------------------------------- | ---------------------------------- | ---------------- |
-| `sign.identity` 或 `sign.certificateFile` | `CSC_IDENTITY_AUTO_DISCOVERY=true` | 显式开启证书发现 |
-| `sign.certificateFile`                    | `CSC_LINK`                         | 证书文件路径     |
-| `sign.certificatePassword`                | `CSC_KEY_PASSWORD`                 | 证书密码         |
+| 方式               | 环境变量                                                   |
+| ------------------ | ---------------------------------------------------------- |
+| Apple ID           | `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID` |
+| API Key（CI 推荐） | `APPLE_API_KEY`、`APPLE_API_KEY_ID`、`APPLE_API_ISSUER`    |
+| Keychain Profile   | `APPLE_KEYCHAIN`、`APPLE_KEYCHAIN_PROFILE`                 |
 
-#### 四、Linux 包签名 (`build.linux.sign`)
+**证书文件与密码也必须通过环境变量传入**（`mac.sign` 无 `certificateFile` / `certificatePassword` 字段）：
 
-`electron-builder` **本身不签名 Linux 包**，实际签名依赖底层工具：`deb` 通过 `dpkg-sig`、AppImage 通过 `appimagetool --sign`，均基于 GPG 密钥。模板中已给出注释示例：
+| 环境变量           | 说明                               |
+| ------------------ | ---------------------------------- |
+| `CSC_LINK`         | 证书文件路径（.p12）或 base64 内容 |
+| `CSC_KEY_PASSWORD` | 证书密码                           |
 
-```js
-build: {
-  linux: {
-    sign: {
-      gpgPrivateKey: process.env.GPG_PRIVATE_KEY,       // GPG 私钥（ASCII-armored 内容）
-      gpgKeyPassphrase: process.env.GPG_KEY_PASSPHRASE, // GPG 密钥密码
-    },
-  },
-}
+> **兼容说明**：本工具额外接受以下旧写法作为便利字段，构建时会**自动剥离这些非官方字段**，不会触发 electron-builder 的 `additionalProperties: false` 校验：
+>
+> - `sign.certificateFile` / `sign.certificatePassword` → 转换为 `CSC_LINK` / `CSC_KEY_PASSWORD` 环境变量；
+> - `sign.notarize`（旧的对象写法）→ **直接丢弃**。如需启用公证，请设置 `mac.notarize: true`，并通过环境变量提供凭据（见上表）。
+>
+> 仍推荐按上述 v27 官方规范书写。
+
+**配置严格校验（构建前）**：
+
+与 Windows 一致，以下情形会在**构建开始前**报错退出（复制文件之前），不进入打包流程：
+
+- `notarize` 必须为 boolean（`true` / `false`），写成对象会报错；
+- `notarize: true` 时，本工具会在构建前检查公证凭据（环境变量）是否完整；若只配置部分（例如只设了 `APPLE_ID`，缺 `APPLE_APP_SPECIFIC_PASSWORD` 或 `APPLE_TEAM_ID`），会报错并提示缺哪些；
+
+**关于不配置 `notarize`**：本工具只在你显式设置 `notarize: true` 时检查凭据；`false` 时不做任何处理。若**完全不配置**该字段，行为完全交由 electron-builder 决定，请以其官方文档为准。如不需要公证，建议显式设置 `notarize: false`。
+
+#### 四、Linux 包签名
+
+`electron-builder` **本身不签名 Linux 包**，实际签名依赖底层工具：`deb` 通过 `dpkg-sig`、AppImage 通过 `appimagetool --sign`，均基于 GPG 密钥。
+
+v27 的 `linux` 配置下**没有 `sign` 字段**；GPG 签名通过环境变量触发：
+
+```
+GPG_PRIVATE_KEY=<ASCII-armored 私钥内容>
+GPG_KEY_PASSPHRASE=<密钥密码>
 ```
 
-**环境变量兜底**：`build.js` 会自动把上述两项转换为 `GPG_PRIVATE_KEY` / `GPG_KEY_PASSPHRASE` 传给 `electron-builder`。使用前请确保宿主机已安装 `dpkg-sig`、`appimagetool` 及对应的 GPG 密钥。
+设置上述环境变量后，构建 Linux 包时会自动签名。使用前请确保宿主机已安装 `dpkg-sig`、`appimagetool` 及对应的 GPG 密钥。
+
+> **兼容说明**：本工具额外接受 `build.linux.sign.gpgPrivateKey` / `build.linux.sign.gpgKeyPassphrase`（旧写法）作为便利字段，构建时会**自动剥离 `sign` 字段**并转换为上述环境变量，不会触发 electron-builder 的 `additionalProperties: false` 校验。仍推荐直接使用环境变量。
+
+**配置严格校验（构建前）**：
+
+与 Windows 一致，`linux.sign` 的 `gpgPrivateKey` 与 `gpgKeyPassphrase` **必须同时配置**，只配其一会在**构建开始前**报错退出（复制文件之前），并提示缺哪个，避免走到打包后期才失败。
 
 ---
 
@@ -858,7 +877,7 @@ $pubBytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509Cont
 
 ### 优化建议
 
-- 使用 `excludeDependencies` 移除不必要的包（如开发依赖）;
+- 使用 `excludeDependencies` 自定义排除不需要打包进应用的依赖包（出于安全或减小体积等考虑）;
 - 构建前执行 `npm prune --production` 精简依赖;
 - 利用 `build.compression: 'maximum'` 压缩安装包（仅对 electron-builder 产物有效,Inno Setup 有自己的压缩设置）;
 
@@ -872,7 +891,9 @@ $pubBytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509Cont
 `build` 对象中允许添加任何 `electron-builder` 官方支持的配置（如 `compression`、`extraResources`、`publish`、`afterPack` 等）,它们会被正确合并到 `builder.json` 中;
 
 ### 2. 使用钩子脚本
-通过设置 `build.afterPack` 或 `build.afterBuild` 等字段（指向项目中的脚本文件）,可以在构建过程中执行自定义操作（例如复制额外文件、重新签名、上传到服务器）;
+通过设置 `build.afterPack` 或 `build.afterAllArtifactBuild` 等字段（指向项目中的脚本文件），可以在构建过程中执行自定义操作（例如复制额外文件、重新签名、上传到服务器）。
+
+**钩子路径说明**：路径可填**相对路径**（相对项目根目录）或**绝对路径**，两种写法均受支持。构建时，本工具会自动将钩子文件复制到临时构建目录，并将其路径改写为临时目录内的绝对路径——这是因为底层 `electron-builder` 要求钩子模块必须位于其 `--project` 指定的工作区（即本工具的临时目录）内，直接填写项目根目录下的路径会被 `electron-builder` 拒绝（报 `Hook module path ... resolves outside the workspace root`）。用户无需关心这一细节，按正常相对/绝对路径填写即可。
 
 ### 3. 修改主进程模板（高级）
 目前主进程由内置的 `electron-main.js` 模板生成;如需深度修改主进程逻辑,您可以使用 `patch-package` 对 `@flun/desktop-builder` 打补丁,或者 fork 项目并修改 `build.js` 以支持自定义模板路径（未来版本可能原生支持）;
@@ -933,11 +954,11 @@ Your configuration uses an option that was removed in electron-builder v27:
 
 需要按以下对照表手动迁移你的 `desktopAppConfig.js`（本包 v5.0.0 自带的模板已按新格式编写,可直接参考）：
 
-| 旧格式（`electron-builder` v26）                               | 新格式（`electron-builder` v27）                    |
-| -------------------------------------------------------------- | --------------------------------------------------- |
-| `npmRebuild: false`                                            | `nativeModules: { npmRebuild: false }`              |
-| `mac.identity` / `mac.hardenedRuntime` / `mac.entitlements` 等 | 统一移入 `mac.sign: { ... }`                        |
-| `linux.syncDesktopName`                                        | 已移除,行为变为始终同步 `.desktop` 文件名与窗口类名 |
+| 旧格式（`electron-builder` v26）                       | 新格式（`electron-builder` v27）                    |
+| ------------------------------------------------------ | --------------------------------------------------- |
+| `npmRebuild: false`                                    | `nativeModules: { npmRebuild: false }`              |
+| `mac.identity` / `hardenedRuntime` / `entitlements` 等 | 统一移入 `mac.sign`；`mac.notarize` 仍在 `mac` 下   |
+| `linux.syncDesktopName`                                | 已移除,行为变为始终同步 `.desktop` 文件名与窗口类名 |
 
 也可以执行官方迁移命令自动改写配置：
 
