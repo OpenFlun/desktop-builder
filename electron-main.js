@@ -3,11 +3,11 @@ import { spawn, exec } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import dns from 'dns';
 import http from 'http';
 import https from 'https';
 import net from 'net';
 import { createRequire } from 'module';
+
 
 // --------------------- 全局变量 ---------------------
 let mainWindow = null, serverProcess = null, windowCreationPromise = null, loadRetryCount = 0, focusRestoreTimer = null,
@@ -114,26 +114,19 @@ const require = createRequire(import.meta.url), __dirname = path.dirname(fileURL
   },
   // 等待服务器就绪
   waitForServer = async (port, timeout = 30000) => {
-    const start = Date.now(), url = new URL(CONFIG.APP_URL), hostname = url.hostname, protocol = url.protocol,
+    const start = Date.now(), protocol = new URL(CONFIG.APP_URL).protocol,
       httpModule = protocol === 'https:' ? https : http;
-    let ip = '127.0.0.1';
-    try {
-      const { address } = await dns.promises.lookup(hostname);
-      ip = address;
-    } catch (err) {
-      log(`解析 ${hostname} 失败: ${err.message}, 使用 127.0.0.1 兜底`);
-    }
 
     return new Promise(resolve => {
       const check = () => {
         if (Date.now() - start > timeout) return log('服务器就绪超时'), resolve(false);
         const req = httpModule.get({
-          hostname: ip, port: port, path: '/',
-          rejectUnauthorized: false, timeout: 5000, family: 4
+          hostname: '127.0.0.1', port: port, path: '/',
+          rejectUnauthorized: false, timeout: 5000
         }, res => { resolve(true), req.destroy() });
 
-        req.on('error', err => { log('服务器尚未就绪: ' + err.message), setTimeout(check, 2000) });
-        req.on('timeout', () => { req.destroy(), setTimeout(check, 2000) });
+        req.on('error', err => { log('服务器尚未就绪: ' + err.message), setTimeout(check, 200) });
+        req.on('timeout', () => { req.destroy(), setTimeout(check, 200) });
       };
       check();
     });
@@ -152,7 +145,8 @@ const require = createRequire(import.meta.url), __dirname = path.dirname(fileURL
     let port = 7296;
     try { port = parseInt(new URL(CONFIG.APP_URL).port) || 7296 } catch (_) { }
     for (let attempt = 1; attempt <= 3; attempt++) {
-      log(`正在清理端口 ${port}（尝试 ${attempt}/3）...`), await ensurePortFree(port), log('正在启动服务器进程...');
+      log(`正在清理端口 ${port}（尝试 ${attempt}/3）...`);
+      await ensurePortFree(port), log('正在启动服务器进程...');
       const env = { ...process.env, NODE_PATH: path.join(__dirname, 'node_modules'), ELECTRON_RUN_AS_NODE: '1' };
       serverProcess = spawn(process.execPath, [serverPath], { cwd: __dirname, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env });
       serverProcess.stdout.on('data', d => log('服务器 stdout: ' + d.toString().trim()));
@@ -255,7 +249,9 @@ app.whenReady().then(async () => {
   // 检查 node_modules 是否存在
   const nodeModulesPath = path.join(__dirname, 'node_modules');
   if (!fs.existsSync(nodeModulesPath)) return log('[错误] node_modules 缺失,请重新安装应用程序;'), app.quit();
-  await startServer(), await createWindow(), startFocusRestore();
+  await startServer();
+  await createWindow();
+  startFocusRestore();
 });
 
 app.on('window-all-closed', () => {

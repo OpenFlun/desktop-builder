@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import { execa } from 'execa';
 import { minimatch } from 'minimatch';
 import AdmZip from 'adm-zip';
+import { optimizeNodeModules, markVerified } from './optimize-node-modules.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = createRequire(import.meta.url),
     CACHE_DIR = path.join(os.homedir(), '.electron-builder-cache'),
@@ -227,7 +228,7 @@ const build = async () => {
     let shouldInstall = true;
     if (await fs.pathExists(snapshotPath)) {
         const oldSnapshot = await fs.readJson(snapshotPath);
-        if (JSON.stringify(oldSnapshot) === JSON.stringify(snapshotData)) {
+        if (JSON.stringify(oldSnapshot.deps) === JSON.stringify(snapshotData.deps) && JSON.stringify(oldSnapshot.extra) === JSON.stringify(snapshotData.extra)) {
             const nodeModulesPath = path.join(tempDir, 'node_modules');
             if (await fs.pathExists(nodeModulesPath))
                 shouldInstall = false, console.log(chalk.gray('[信息] 依赖未变化,跳过安装'));
@@ -242,6 +243,23 @@ const build = async () => {
         });
         await fs.writeJson(snapshotPath, snapshotData, { spaces: 2 });
     }
+
+    // ==== node_modules 优化 ====
+    const optimizeCfg = buildConfig.optimize;
+    const optimizeEnabled = optimizeCfg === false ? false
+        : (optimizeCfg && typeof optimizeCfg === "object" && optimizeCfg.enabled === false) ? false
+        : true;
+    if (optimizeEnabled) {
+        try {
+            await optimizeNodeModules(tempDir, (optimizeCfg && typeof optimizeCfg === "object") ? optimizeCfg : {});
+        } catch (err) {
+            console.error(chalk.red("[错误] node_modules 优化失败：" + err.message));
+            console.error(chalk.yellow("[提示] 可在 desktopAppConfig.js 中设置 optimize: false 关闭优化，"));
+            console.error(chalk.yellow("       或用 optimize: { exclude: [\"包名\"] } 排除问题包。"));
+            process.exit(1);
+        }
+    }
+    // ==== 优化结束 ====
     // 更新 allowScripts
     if (await fs.pathExists(rootPkgPath)) {
         try {
@@ -262,7 +280,7 @@ const build = async () => {
     // 构建 configObj
     const {
         outputDir = './dist', inno: innoConfig = {}, appId = 'com.example.app', publisher: userPublisher,
-        shortcutName: userShortcutName, win: userWin, mac: userMac, linux: userLinux, dmg: userDmg, ...restBuild
+        shortcutName: userShortcutName, win: userWin, mac: userMac, linux: userLinux, dmg: userDmg, optimize: _optimize, ...restBuild
     } = buildConfig, userExcludePatterns = excludeFiles.map(p => {
         let pattern = p.replace(/^\.\//, '');
         if (pattern.endsWith('/')) return `!${pattern.slice(0, -1)}/**`;
@@ -644,6 +662,7 @@ const build = async () => {
         }
 
         await copyArtifacts(sourceDir, targetDir, ['.exe'], excludeOutputs);
+        await markVerified(tempDir);
         console.log(chalk.green('[成功] 构建完成！安装包位于: ' + targetDir));
     } else {
         // macOS / Linux
@@ -656,7 +675,7 @@ const build = async () => {
             patterns = targets.map(t => (t.startsWith('.') ? t : `.${t}`));
         }
         const copied = await copyArtifacts(appDir, targetDir, patterns, excludeOutputs);
-        if (copied) console.log(chalk.green('[成功] 构建完成！安装包位于: ' + targetDir));
+        if (copied) { await markVerified(tempDir); console.log(chalk.green('[成功] 构建完成！安装包位于: ' + targetDir)); }
         else console.warn(chalk.yellow('[警告] 未找到构建产物;'));
     }
 };

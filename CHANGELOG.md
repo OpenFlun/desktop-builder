@@ -1,4 +1,47 @@
 # 变更日志
+## [6.0.0] - 2026-10-07
+### 新增
+- **node_modules 优化系统（默认开启）**：构建时自动执行六阶段优化，大幅减少打包文件数、加速应用冷启动。不改变用户代码、不改变项目结构、对任意 Node.js 项目通用；
+  - **阶段 1 合并 JS**：按包入口 bundle，多个 JS 文件合并为单文件（`__bundled__.mjs` 或 `__bundled__.cjs`）；
+    - 单入口 + 多子路径入口均支持（如 `@smithy/core` 387 文件 → 13 入口、`@aws-sdk/core` 125 → 6、`@noble/hashes` 19 → 17）；
+    - CJS 包保持 CJS、ESM 包保持 ESM，不改变包类型语义；
+    - CJS 包若为 `module.exports = require_xxx()`（整体赋值）形式，自动追加显式导出声明，确保 `cjs-module-lexer` 能识别命名导出（如 `import { toDataURL } from 'qrcode'`）；
+    - 保留被 `package.json` `scripts` 引用的文件（如 `copy-files.js`），避免破坏安装期脚本；
+  - **阶段 2 清空复制到项目根的资源**：扫描各包 `postinstall` 引用的目录/文件（如 `templates/` / `static/` / `customize/`），**保留目录结构、清空内容**，让包内 `existsSync` 自检通过；被 import/require 的文件保留不删；
+  - **阶段 3 清平台二进制**：删除非当前平台的 `prebuilds/` / `prebuilt/` 子目录，以及 `@scope/平台纯二进制包`（如 `@esbuild/win32-x64`、`@flun/passport-desktop-win32-x64-msvc`）；
+  - **阶段 4 清开发文件**：删除 `.md` / `.map` / `.d.ts` / `.ts` / `.h` / `.c` / `.gyp` / `tsconfig.json` / `.nycrc` / `.editorconfig` / `package-lock.json` 等非运行文件；
+  - **阶段 5 清中间产物**：删除 `package.json.orig` 等合并过程中的临时文件；
+  - **阶段 6 清不参与运行的文件**：对齐 `build.js` 的 `files` 排除规则，删除 `license*` / `licence*` / `LICENSE*` / `.ts` / `.cts` / `.mts` / `node` 假包 / `node-win*` 等平台假包；
+- **优化缓存**：`.deps-snapshot.json` 新增 `verified` / `platform` / `arch` / `builderVersion` 四字段；
+  - 依赖未变 + 三字段匹配 + `verified === true` → 跳过优化（二次构建零开销）；
+  - 优化完成时不写 `verified`，只有**整条构建流程成功**（含 electron-builder + Inno Setup）才由 `build.js` 调 `markVerified(tempDir)` 写入 `verified = true`；
+  - 构建失败时 `verified` 保持 `false`，下次自动重跑优化，保证 node_modules 状态与构建产物一致；
+- **优化配置**（`desktopAppConfig.js`）：
+  - `optimize: false` 关闭优化；
+  - `optimize: { exclude: ['包名'] }` 精确排除特定包（如某个包合并后运行异常）。
+
+### 修复
+- **`waitForServer` 冷启动慢（重要）**：原逻辑通过 `dns.promises.lookup(hostname)` 解析 `appUrl` 域名，返回的可能是公网 IPv6，导致每次探测本机服务都绕外网、超时后等待 2 秒重试。修复为直接使用 `127.0.0.1` + 200ms 轮询，冷启动节省数秒；
+  - 同时删除无用的 `dns` import。
+
+### 性能
+- **实测（中等规模 Node.js 项目）**：
+  - 应用冷启动（窗口出现）：约 **8.7s → 4.7s**；
+  - 打包后 `node_modules` 文件数：约 **2542 → 591**（-77%）；
+  - 打包后 `node_modules` 体积：约 **391MB → 75MB**（-81%）；
+  - 首次构建因新增 `esbuild` 依赖与优化流程约增加 10~30 秒，**后续构建命中缓存后无额外开销**。
+
+### 文档
+- **README**：补充 `optimize` 配置说明、优化系统工作原理、异常时的关闭/排除方式；
+- **`desktopAppConfig.js` 模板**：加入 `optimize` 配置注释（默认开启说明、关闭方式、排除方式）。
+
+### 升级注意事项
+- **6.0.0 起 `node_modules` 优化默认开启**，用户无需做任何配置即可享受优化收益；
+- **升级后首次构建**会因新增依赖（`esbuild`）与优化流程而变慢，请耐心等待；后续构建命中缓存后无额外开销；
+- 若**构建或运行异常**，按以下顺序排查：
+  1. 在 `desktopAppConfig.js` 中设置 `optimize: false` 关闭优化，验证是否为优化系统引起；
+  2. 若确认是某个包合并后异常，使用 `optimize: { exclude: ['包名'] }` 精确排除该包；
+  3. 若需彻底重来，删除临时目录 `%TEMP%\desktop-builder-build`（Windows）后重新构建，工具会自动完整重装依赖并重新优化。
 ## [5.2.0] - 2026-10-04 21:15
 ### 修复
 - **`platformHandlers` 参数传递错误（重要）**：原代码统一按 `(configObj, userWin, userMac, userDmg)` 传参，导致 `darwin` 分支把 win 配置当 mac 配置、`dmg` 把 mac 配置当 dmg 配置、`linux` 分支把 win 配置当 linux 配置。此前仅有 Windows 构建被真正使用过，此 bug 未暴露；修复后按平台分别传参，macOS / Linux 构建不再错乱；

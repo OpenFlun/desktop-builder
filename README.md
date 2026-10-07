@@ -26,6 +26,13 @@
 - 因此启用 asar 后，Node.js 子进程会启动失败（表现为应用启动后立即退出、页面 `ERR_CONNECTION_REFUSED`）；
 - 本工具已在 `build.js` 中显式设置 `asar: false`，确保打包后的 `resources/app` 始终是真实目录结构。
 
+**我们的替代方案**：asar 的核心诉求是"把成千上万个小文件打成单文件，减少启动时文件系统 I/O 与杀毒软件扫描量，从而加快启动"。但 asar 用**虚拟归档**实现，牺牲了 Node.js 子进程的读取能力——**它没有真正解决问题，只是把问题从"慢"换成了"打不开"**。本工具给出**不破坏目录结构**的等价方案：
+
+- 构建时自动执行 **node_modules 优化系统**（详见 [✨ 特性](#-特性)），把包内 JS 按入口合并成单文件（`__bundled__.mjs` / `__bundled__.cjs`），同时清理平台二进制、开发文件等非运行文件；
+- 打包后的 `resources/app` 仍是**真实目录结构**，Node.js 子进程可正常读取，不触发 asar 的兼容性问题；
+- 优化系统的执行结果由 `.deps-snapshot.json` 中的 **`verified`** 字段记录：仅当**依赖未变 + 平台/架构/工具版本匹配 + 上次构建全流程成功**（`verified: true`）时才跳过优化，否则自动重跑。这保证了每次构建产物一致，同时二次构建零开销；
+- **一句话对比**：asar 减小了文件数但子进程打不开；本工具在保持真实目录结构的前提下，同样大幅减小文件数、加速启动。
+
 > **⚠️ 老用户注意（曾启用过 asar 的版本）**：如果您的机器上曾用早期版本（启用了 asar）构建过，`node_modules` 可能已被 asar 打包过程残留破坏（部分包的内部文件缺失但目录结构还在）。本工具从 v5.1.4 起会在每次安装前先删除依赖快照、安装成功后再写回，因此**任何中断或异常状态都会在下次构建时自动触发完整重装**，无需手动干预。若您升级后首次构建仍遇到模块缺失，可手动删除临时目录缓存强制重装：
 >
 > ```powershell
@@ -44,10 +51,12 @@
 - 📦 **灵活的安装选项**：Windows 使用 Inno Setup（支持自定义向导样式、语言、快捷方式等）,macOS 支持 DMG/ZIP,Linux 支持 AppImage/Deb 等;
 - 🎨 **品牌自定义**：应用图标、安装/卸载图标、DMG 卷宗图标、背景图片、向导图片等;
 - 🧩 **菜单自定义**：完全自定义应用菜单（语言、角色、点击回调,甚至内联函数）;
-- 📁 **精细排除**：可排除不需要的文件、依赖包和最终输出文件（`excludeFiles` 同时在复制和打包阶段生效）;
+- 📁 **精细排除**：可排除不需要的文件、依赖包和最终输出文件（`excludeFiles` 同时在复制和打包阶段生效）；`excludeDependencies` 用于自定义排除生产依赖包（如平台专用包、已确认无用的包）;
 - 🔧 **可扩展**：允许直接添加 `electron-builder` 和 `Inno Setup` 任意扩展字段;
 - 📦 **依赖预打包**：构建时自动判断是否安装生产依赖并打包进应用,用户**首次启动无需联网**,开箱即用;
 - 🎨 **主题切换支持**：通过菜单配置轻松切换浅色/深色/跟随系统主题;
+- 🚀 **node_modules 优化系统（v6.0.0 新增，默认开启）**：构建时自动执行六阶段优化——**合并 JS**（按入口 bundle，多文件合一）、**清空资源**（postinstall 复制到项目根的目录，保留空目录以通过自检）、**清平台二进制**（非当前平台的 prebuilds）、**清开发文件**（`.md` / `.map` / `.d.ts` / `.h` / `.c` 等）、**清中间产物**、**清不参与运行的文件**（对齐 electron-builder `files` 排除规则）；用户无需配置，即可大幅减少打包文件数与体积、加速冷启动；
+- 🧩 **优化的逃生舱口**：若遇异常，可在 `desktopAppConfig.js` 中 `optimize: false` 整体关闭，或 `optimize: { exclude: ["包名"] }` 精确排除；
 
 ---
 
@@ -63,7 +72,8 @@
 │   ├── uninstallerIcon.ico   # Windows 卸载程序图标
 │   ├── wizard.bmp            # Inno Setup 左侧大图（164×314 BMP）
 │   └── wizardSmall.bmp       # Inno Setup 右上小图（55×58 BMP）
-├── build.js                  # 构建主逻辑（复制文件、安装依赖、electron-builder、Inno Setup 打包）
+├── build.js                  # 构建主逻辑（复制文件、安装依赖、调用优化系统、electron-builder、Inno Setup 打包）
+├── optimize-node-modules.js  # node_modules 优化系统（6 阶段：合并 JS / 清空资源 / 清平台二进制 / 清开发文件 / 清中间产物 / 清不参与运行的文件）
 ├── copy-files.js             # postinstall 脚本：复制配置模板与 build/ 到项目根目录
 ├── desktopAppConfig.js       # 配置文件模板（安装时复制到项目根目录）
 ├── electron-main.js          # Electron 主进程模板（构建时替换占位符生成 main.mjs）
@@ -97,7 +107,7 @@
   - 官网:https://jrsoftware.org/isdl.php
   - 中国 https://gitee.com/OpenFlun/inno-setup/releases
 
-1. 大部分情况下无需手动下载,当前版本已内置自动下载安装;
+1. 大部分情况下无需手动下载,构建时自动下载安装;
 2. 安装版手动安装时一定要选择默认安装路径,不然会因为找不到文件而构建失败;
 3. 如果你是在中国下载的便携版压缩文件,请解压到 "C:\Users\你的用户名\.electron-builder-cache" 下(Windows);
 
@@ -172,6 +182,7 @@ await build();
 | `excludeFiles`        | `string[]` | 复制项目文件时排除的文件/目录                                | [7. 排除规则](#7-排除规则)                      |
 | `excludeDependencies` | `string[]` | 从最终依赖列表中移除的 npm 包                                | [7. 排除规则](#7-排除规则)                      |
 | `excludeOutputs`      | `string[]` | 从最终输出目录中排除的文件                                   | [7. 排除规则](#7-排除规则)                      |
+| `optimize`            | `boolean`  | 优化开关（默认开启，可传对象排除特定包）                     | [8. optimize](#8-node_modules-优化-optimize)    |
 
 `build` 子字段概览：
 
@@ -310,13 +321,30 @@ menu: [
 
 **作用**：定义应用的打包输出、应用标识、图标、安装程序、签名等所有与最终产物相关的配置。`build` 对象会与 `electron-builder` 的原生配置合并，**你可以直接添加任何 `electron-builder` 官方支持的字段**（如 `extraResources`、`publish`、`afterPack` 等）。
 
-**工具内部硬编码的 `files` 排除规则**（无需手动配置）：
+**构建时自动优化 `node_modules`（v6.0.0 起）**：本工具在 `npm install` 完成后、`electron-builder` 打包前，自动执行 **6 阶段优化**。相比早期版本依赖 `files` 数组声明式排除（**文件仍在磁盘，只是不打进 app**），优化系统在**物理层面**清理，构建产物更小、启动更快。
 
-- `!builder.json`
-- `!**/*.map`、`!**/*.ts`、`!**/*.cts`、`!**/*.mts`
-- `!node_modules/**/*.md`、`!node_modules/**/*.markdown`、`!node_modules/**/license*`、`!node_modules/**/licence*`、`!node_modules/**/LICENSE*`、`!node_modules/**/LICENCE*`、`!node_modules/node/**`、`!node_modules/node-win*/**`、`!node_modules/node-darwin*/**`、`!node_modules/node-linux*/**`、`!node_modules/node-freebsd*/**`、`!node_modules/node-sunos*/**`、`!node_modules/node-aix*/**`
+**6 阶段优化流程**：
 
-如果你需要额外排除文件，请使用 `excludeFiles`（它会自动转换为 `files` 排除规则）。
+1. **合并 JS**：按包入口 bundle，多个 JS 文件合并为单文件（`__bundled__.mjs` / `__bundled__.cjs`）；CJS 保持 CJS、ESM 保持 ESM；被 `package.json` `scripts` 引用的文件（如 `copy-files.js`）保留不合并；
+2. **清空复制到项目根的资源**：扫描各包 `postinstall` 引用的目录/文件（如 `templates/` / `static/` / `customize/`），**保留目录结构、清空内容**（让包内 `existsSync` 自检通过）；被 import/require 的文件保留不删；
+3. **清平台二进制**：删除非当前平台的 `prebuilds/` / `prebuilt/` 子目录，以及 `@scope/平台纯二进制包`；
+4. **清开发文件**：删除 `.md` / `.map` / `.d.ts` / `.ts` / `.cts` / `.mts` / `.h` / `.c` / `.gyp` / `tsconfig.json` / `.nycrc` / `.editorconfig` / `package-lock.json` 等非运行文件；
+5. **清中间产物**：删除 `package.json.orig` 等合并过程中的临时文件；
+6. **清不参与运行的文件**：等价于早期版本的 `files` 排除规则，物理删除以下文件：
+   - `builder.json`
+   - `**/*.map`、`**/*.ts`、`**/*.cts`、`**/*.mts`
+   - `node_modules/**/*.md`、`node_modules/**/*.markdown`
+   - `node_modules/**/license*`、`node_modules/**/licence*`、`node_modules/**/LICENSE*`、`node_modules/**/LICENCE*`
+   - `node_modules/node/**`
+   - `node_modules/node-win*/**`、`node_modules/node-darwin*/**`、`node_modules/node-linux*/**`、`node_modules/node-freebsd*/**`、`node_modules/node-sunos*/**`、`node_modules/node-aix*/**`
+
+**优化的开关与逃生舱口**：
+
+- `optimize: false`：整体关闭优化；
+- `optimize: { exclude: ['包名'] }`：精确排除特定包；
+- 若需额外排除项目文件，仍使用 `excludeFiles`（作用于复制阶段，与优化系统独立）。
+
+> **`electron-builder` 的 `files` 数组仍作为兜底保留**（防止 `optimize: false` 时残留文件打进 app），但**默认情况下实际打包的文件已经过优化系统清理**，`files` 数组主要起保险作用。
 
 > **关于 asar**：本工具**默认禁用** asar 打包。原因详见 [简介中的说明](#-简介)。因此 `resources/app` 始终是真实目录结构，Node.js 子进程能正常读取文件。
 
@@ -630,6 +658,32 @@ excludeOutputs: [
 
 ---
 
+### 8. node_modules 优化 (`optimize`)
+
+**作用**：控制构建时的 `node_modules` 优化系统（v6.0.0 新增，**默认开启**）。六阶段流程详见 [4. 打包配置](#4-打包配置-build)。
+
+```javascript
+export default {
+  // 默认开启，无需配置
+
+  // ===== 关闭优化（构建或运行异常时使用）=====
+  // optimize: false,
+
+  // ===== 精确排除特定包（某个包合并后运行异常时使用）=====
+  // optimize: { exclude: ['包名'] },   // 不优化有异常的特定包（如某个包合并后运行异常）
+};
+```
+
+- **不配置**：优化系统默认开启。构建时自动执行六阶段优化，大幅减少打包文件数和体积、加速冷启动；
+- **`optimize: false`**：整体关闭优化。用于排查"是否优化系统引起的异常"——若关闭后问题消失，说明是优化系统的某些清理动作引起的；
+- **`optimize: { exclude: ['包名'] }`**：精确排除特定包。用于某个包合并后运行异常时——只跳过该包的优化，其余包继续享受优化。包名写 `package.json` 中的 `name` 字段值（如 `qrcode`、`@flun/html-template`）；
+- **调试三步曲**：
+  1. 遇到异常，先 `optimize: false` 快速判断是否为优化引起；
+  2. 确认后，用 `optimize: { exclude: ['问题包名'] }` 逐个定位并排除；
+  3. 若需完全重来，删除临时目录 `%TEMP%\desktop-builder-build`（Windows）后重新构建。
+
+> **提示**：优化系统只处理 `node_modules`，不触碰你的项目源码和资源文件。若需排除项目里的文件/目录，请使用 [`excludeFiles`](#71-excludefiles)。
+
 ## 🔏 代码签名
 
 本工具已内置跨平台签名适配，**用户只需填写最少的字段，其余转义、拼接、查找、校验均由构建脚本自动完成**。
@@ -869,16 +923,17 @@ $pubBytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509Cont
 - **构建时**会自动执行 `npm install --production`,将 `node_modules` 完整打包进应用;
 - **用户首次启动无需联网**,开箱即用;
 - **安装包体积会增大,构建和安装时间会增长**（包含依赖）,但这是换取流畅用户体验的代价;
+- **构建完成后**（v6.0.0 新增）自动执行 `node_modules` 优化系统（详见 [8. node_modules 优化](#8_node_modules-优化-optimize)），按入口合并 JS、清理平台二进制与开发文件，进一步减小体积、加速冷启动;用户无需任何操作;
 ### 如何回退到运行时安装依赖（旧行为）
 
-如果您希望减小安装包体积,减少构建和安装时间,并允许用户首次启动时联网安装依赖,请安装 `v2.1.7` 及以下版本（不推荐）;
+若希望减小安装包体积、缩短构建时间,并允许用户首次启动时联网安装依赖,可安装 `v2.1.7` 及以下版本（不推荐）;
 
-> **注意**：在当前版本中,强行排除 `node_modules` 会导致应用无法启动,因为 Electron 需要依赖来运行 Node.js 项目;因此请保持默认行为;
+> **注意**：工具默认行为始终为「构建时打包依赖」；强行排除 `node_modules` 会导致应用无法启动，因为 Electron 需要依赖来运行 Node.js 项目；请保持默认行为;
 
 ### 优化建议
 
+- **无需任何操作**：`node_modules` 优化系统默认开启，自动完成 JS 合并、平台二进制清理、开发文件清理等，是本工具内置的最强优化手段;
 - 使用 `excludeDependencies` 自定义排除不需要打包进应用的依赖包（出于安全或减小体积等考虑）;
-- 构建前执行 `npm prune --production` 精简依赖;
 - 利用 `build.compression: 'maximum'` 压缩安装包（仅对 electron-builder 产物有效,Inno Setup 有自己的压缩设置）;
 
 ---
@@ -918,7 +973,7 @@ $pubBytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509Cont
 - 版本号取自项目根目录下 `package.json` 的 `version` 字段,请直接修改该文件;
 
 ### 4. 生成的安装包很大（约 100MB+）
-- 正常,Electron 包含完整 Chromium 内核,且现在包含 `node_modules`;可通过 `build.compression: 'maximum'` 压缩,或使用 `excludeDependencies` 精简依赖;Windows 安装程序还可调整 Inno Setup 的压缩设置;
+- 正常,Electron 包含完整 Chromium 内核,且包含 `node_modules`;`node_modules` 部分已经过**优化系统**自动合并与清理，仍可通过 `build.compression: 'maximum'` 压缩，或使用 `excludeDependencies` 精简依赖;Windows 安装程序还可调整 Inno Setup 的压缩设置;
 
 ### 5. 如何只生成当前平台的安装包？
 - 默认行为即为只生成当前平台；如需生成其他平台,请在对应操作系统上执行构建命令;
@@ -930,7 +985,7 @@ $pubBytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509Cont
 - 如上方“窗口配置”警告所述,本工具为了自动启动 Node.js 子进程,**强制启用了 `nodeIntegration` 并关闭了 `contextIsolation` 和 `sandbox`**;这是设计上的必要妥协,但确实降低了安全性；**请勿在应用中加载外部网页或不可信内容**;
 
 ### 8. 构建后的应用必须联网才能使用吗？
-- **默认（v3.0.0+）**：不需要,依赖已打包,可离线运行;
+- **默认（v3.0.0+）**：不需要,依赖已打包,可离线运行;（v3.0.0 之前需在应用启动时安装依赖，需联网）
 
 ### 9. 首次启动时出现一个日志窗口,显示 npm 安装信息,是正常的吗？
 - 仅当您排除了 `node_modules` 时才会出现（旧行为）;默认情况下（打包依赖）,不会出现该窗口,应用直接启动;
@@ -944,7 +999,7 @@ $pubBytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509Cont
 
 ### 12. 旧版 `desktopAppConfig.js` 在 `electron-builder` v27 下报错怎么办？
 
-从本包 **v5.0.0** 起,底层依赖的 **`electron-builder` 升级到 v27**,该版本对配置格式做了破坏性调整;如果你是从旧版本升级,或在旧项目上使用了本包,会看到类似报错：
+从本包 **v5.0.0** 起,底层依赖的 **`electron-builder`** 为 **v27**,该版本对配置格式做了破坏性调整;若你的 `desktopAppConfig.js` 是按旧版 `electron-builder`（v26）编写的,会看到类似报错：
 
 ```
 Your configuration uses an option that was removed in electron-builder v27:
@@ -967,6 +1022,25 @@ npx electron-builder migrate-schema
 ```
 
 > **说明**：此处的 v27 指的是 **`electron-builder`** 的 v27,不是本包或其他依赖包的版本;本包自身版本号为 `@flun/desktop-builder` 的 version 字段;
+
+### 13. 构建或运行异常，怀疑是优化系统引起的，怎么排查？
+
+`node_modules` 优化系统默认开启，绝大多数项目无需干预。若怀疑与优化相关，按以下顺序定位：
+
+1. **整体关闭**：在 `desktopAppConfig.js` 中设置 `optimize: false`，重新构建。若问题消失，说明确实与优化系统有关；
+2. **精确排除**：设为 `optimize: { exclude: ['包名'] }`，只跳过该包。包名写 `package.json` 中 `name` 字段值，可写多个；
+3. **彻底重来**：删除临时目录 `%TEMP%\desktop-builder-build`（Windows，具体路径取决于系统），重新构建会自动完整重装依赖并重新优化。
+
+详细配置见 [8. node_modules 优化](#8-node_modules-优化-optimize)。
+
+### 14. 构建速度变慢了，是正常的吗？
+
+- **首次构建**：需要下载并运行 `esbuild`（优化系统依赖）、执行六阶段优化与启动验证，会比无优化时多花一些时间；
+- **后续构建**：只要依赖未变、平台/架构/工具版本未变、且上次构建成功，优化系统会自动跳过（缓存命中），构建速度恢复；
+- 优化系统对最终用户收益显著：应用启动更快、安装包更小。若不在意这些收益、只想加快构建，可设置 `optimize: false` 关闭；
+
+> **说明**：`optimize` 状态记录在临时目录的 `.deps-snapshot.json` 中，依赖或环境变化会自动失效并重跑优化，无需手动清理。
+
 ---
 
 ## 📄 许可证
