@@ -683,87 +683,85 @@ const require = createRequire(import.meta.url), BUILDER_VERSION = '5.2.0',
 
     // ==================== 导出函数 ====================
     markVerified = async tempDir => {
-    const p = path.join(tempDir, SNAPSHOT_FILE);
-    if (!await fs.pathExists(p)) return;
-    try {
-        const old = await fs.readJson(p);
-        old.verified = true;
-        await fs.writeJson(p, old, { spaces: 2 });
-    } catch { }
+        const p = path.join(tempDir, SNAPSHOT_FILE);
+        if (!await fs.pathExists(p)) return;
+        try {
+            const old = await fs.readJson(p);
+            old.verified = true;
+            await fs.writeJson(p, old, { spaces: 2 });
+        } catch { }
     },
 
     optimizeNodeModules = async (tempDir, config = {}) => {
-    const excludePkgs = new Set(config.exclude || []);
-    const nmDir = path.join(tempDir, 'node_modules');
-    const snapPath = path.join(tempDir, SNAPSHOT_FILE);
+        const excludePkgs = new Set(config.exclude || []);
+        const nmDir = path.join(tempDir, 'node_modules');
+        const snapPath = path.join(tempDir, SNAPSHOT_FILE);
 
-    if (!await fs.pathExists(nmDir)) {
-        console.log(chalk.gray('[优化] node_modules 不存在，跳过'));
-        return { skipped: true };
-    }
-    if (!await fs.pathExists(snapPath)) {
-        console.log(chalk.gray('[优化] 未找到依赖快照，跳过优化'));
-        return { skipped: true };
-    }
-    const snap = await fs.readJson(snapPath);
-    if (snap.verified === true
-        && snap.platform === process.platform
-        && snap.arch === process.arch
-        && snap.builderVersion === BUILDER_VERSION) {
-        console.log(chalk.gray('[优化] 快照已验证，跳过优化'));
-        // 关键：跳过优化也要先把 verified 清 false，构建成功后再由 build.js 写回 true
-        // 若构建中途失败，下次会重跑优化
+        if (!await fs.pathExists(nmDir)) {
+            console.log(chalk.gray('[优化] node_modules 不存在，跳过'));
+            return { skipped: true };
+        }
+        if (!await fs.pathExists(snapPath)) {
+            console.log(chalk.gray('[优化] 未找到依赖快照，跳过优化'));
+            return { skipped: true };
+        }
+        const snap = await fs.readJson(snapPath);
+        if (snap.verified === true
+            && snap.platform === process.platform
+            && snap.arch === process.arch
+            && snap.builderVersion === BUILDER_VERSION) {
+            console.log(chalk.gray('[优化] 快照已验证，跳过优化'));
+            // 关键：跳过优化也要先把 verified 清 false，构建成功后再由 build.js 写回 true
+            // 若构建中途失败，下次会重跑优化
+            await clearVerified(tempDir);
+            return { skipped: true, cached: true };
+        }
+        // 未验证 → 需要执行优化。若旧快照带有标志位，先清掉 verified
         await clearVerified(tempDir);
-        return { skipped: true, cached: true };
-    }
-    // 未验证 → 需要执行优化。若旧快照带有标志位，先清掉 verified
-    await clearVerified(tempDir);
 
-    const beforeFiles = (await fs.readdir(nmDir)).length;
-    const t0 = Date.now();
+        const beforeFiles = (await fs.readdir(nmDir)).length, t0 = Date.now();
+        try {
+            // 阶段1: 合并
+            console.log(chalk.blue('[优化 1/6] 合并 JS...'));
+            const m = await mergeAll(nmDir, excludePkgs);
+            console.log(chalk.gray(`  合并 ${m.merged} 包，跳过 ${m.skipped}，删 ${m.totalDeleted} 个 JS`));
 
-    try {
-        // 阶段1: 合并
-        console.log(chalk.blue('[优化 1/6] 合并 JS...'));
-        const m = await mergeAll(nmDir, excludePkgs);
-        console.log(chalk.gray(`  合并 ${m.merged} 包，跳过 ${m.skipped}，删 ${m.totalDeleted} 个 JS`));
+            // 阶段2: 清空资源
+            console.log(chalk.blue('[优化 2/6] 清空复制到项目根的资源...'));
+            const c = await clearResources(nmDir, excludePkgs);
+            console.log(chalk.gray(`  清空 ${c} 项`));
 
-        // 阶段2: 清空资源
-        console.log(chalk.blue('[优化 2/6] 清空复制到项目根的资源...'));
-        const c = await clearResources(nmDir, excludePkgs);
-        console.log(chalk.gray(`  清空 ${c} 项`));
+            // 阶段3: 清平台二进制
+            console.log(chalk.blue('[优化 3/6] 清理非当前平台二进制...'));
+            const p = await prunePlatform(nmDir);
+            console.log(chalk.gray(`  清理 ${p} 项`));
 
-        // 阶段3: 清平台二进制
-        console.log(chalk.blue('[优化 3/6] 清理非当前平台二进制...'));
-        const p = await prunePlatform(nmDir);
-        console.log(chalk.gray(`  清理 ${p} 项`));
+            // 阶段4: 清开发文件
+            console.log(chalk.blue('[优化 4/6] 清理开发文件...'));
+            const d = await pruneDevFiles(nmDir);
+            console.log(chalk.gray(`  清理 ${d} 个文件`));
 
-        // 阶段4: 清开发文件
-        console.log(chalk.blue('[优化 4/6] 清理开发文件...'));
-        const d = await pruneDevFiles(nmDir);
-        console.log(chalk.gray(`  清理 ${d} 个文件`));
+            // 阶段5: 清中间产物
+            console.log(chalk.blue('[优化 5/6] 清理中间产物...'));
+            const i = await pruneIntermediates(nmDir);
+            console.log(chalk.gray(`  清理 ${i} 个文件`));
 
-        // 阶段5: 清中间产物
-        console.log(chalk.blue('[优化 5/6] 清理中间产物...'));
-        const i = await pruneIntermediates(nmDir);
-        console.log(chalk.gray(`  清理 ${i} 个文件`));
+            // 阶段6: 清除不参与运行的文件（与 build.js 的 files 数组对齐）
+            console.log(chalk.blue('[优化 6/6] 清除不参与运行的文件...'));
+            const fr = await applyFilesRules(nmDir);
+            console.log(chalk.gray(`  清理 ${fr} 项`));
 
-        // 阶段6: 清除不参与运行的文件（与 build.js 的 files 数组对齐）
-        console.log(chalk.blue('[优化 6/6] 清除不参与运行的文件...'));
-        const fr = await applyFilesRules(nmDir);
-        console.log(chalk.gray(`  清理 ${fr} 项`));
+            await writeSnapshotFlags(tempDir);   // 写 platform/arch/version，同时 verified=false
 
-        await writeSnapshotFlags(tempDir);   // 写 platform/arch/version，同时 verified=false
+            const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+            console.log(chalk.green(`[优化] 完成，耗时 ${elapsed}s`));
 
-        const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-        console.log(chalk.green(`[优化] 完成，耗时 ${elapsed}s`));
-
-        return { merged: m.merged, cleared: c, platform: p, devFiles: d, intermediates: i, filesRules: fr };
-    } catch (err) {
-        // 失败时删除依赖快照，下次强制重装 + 重优化
-        try { await fs.remove(snapPath); } catch { }
-        throw err;
-    }
+            return { merged: m.merged, cleared: c, platform: p, devFiles: d, intermediates: i, filesRules: fr };
+        } catch (err) {
+            // 失败时删除依赖快照，下次强制重装 + 重优化
+            try { await fs.remove(snapPath); } catch { }
+            throw err;
+        }
     };
 
 export { markVerified, optimizeNodeModules };

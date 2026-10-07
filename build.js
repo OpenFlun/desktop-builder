@@ -7,7 +7,7 @@ import chalk from 'chalk';
 import { execa } from 'execa';
 import { minimatch } from 'minimatch';
 import AdmZip from 'adm-zip';
-import { optimizeNodeModules, markVerified } from './optimize-node-modules.js';
+import { markVerified, optimizeNodeModules } from './optimize-node-modules.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = createRequire(import.meta.url),
     CACHE_DIR = path.join(os.homedir(), '.electron-builder-cache'),
@@ -248,7 +248,7 @@ const build = async () => {
     const optimizeCfg = buildConfig.optimize;
     const optimizeEnabled = optimizeCfg === false ? false
         : (optimizeCfg && typeof optimizeCfg === "object" && optimizeCfg.enabled === false) ? false
-        : true;
+            : true;
     if (optimizeEnabled) {
         try {
             await optimizeNodeModules(tempDir, (optimizeCfg && typeof optimizeCfg === "object") ? optimizeCfg : {});
@@ -352,7 +352,7 @@ const build = async () => {
 
     const handlerArgs = platform === 'win32' ? [userWin]
         : platform === 'darwin' ? [userMac, userDmg]
-        : [userLinux];
+            : [userLinux];
     const handlerResult = await platformHandlers[platform](configObj, ...handlerArgs),
         platformArgs = handlerResult.args, subDir = handlerResult.subDir, envExtra = handlerResult.envExtra || {},
         appDir = path.join(output, subDir), configFile = path.join(tempDir, 'builder.json');
