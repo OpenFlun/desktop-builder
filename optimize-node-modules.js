@@ -414,7 +414,6 @@ const require = createRequire(import.meta.url), BUILDER_VERSION = '5.2.0',
 
         return { merged, skipped, totalDeleted };
     },
-
     // ==================== 清空资源 ====================
     collectReferencedFiles = nmRoot => {
         const refs = new Set();
@@ -509,8 +508,7 @@ const require = createRequire(import.meta.url), BUILDER_VERSION = '5.2.0',
     ARCH_MAP = { x64: ['x64', 'x86_64', 'amd64'], arm64: ['arm64', 'aarch64'], arm: ['arm'], ia32: ['ia32', 'x86'], ppc64: ['ppc64', 'ppc64le'], s390x: ['s390x'], riscv64: ['riscv64'] },
     ALL_PLATFORMS = ['win32', 'win64', 'windows', 'darwin', 'macos', 'osx', 'linux', 'freebsd', 'openbsd', 'sunos', 'solaris', 'aix'],
     ALL_ARCHS = ['x64', 'x86_64', 'amd64', 'arm64', 'aarch64', 'arm', 'ia32', 'x86', 'ppc64', 'ppc64le', 's390x', 'riscv64'],
-    myPlat = PLATFORM_MAP[process.platform] || [process.platform],
-    myArch = ARCH_MAP[process.arch] || [process.arch],
+    myPlat = PLATFORM_MAP[process.platform] || [process.platform], myArch = ARCH_MAP[process.arch] || [process.arch],
     isOtherPlatformName = name => {
         const lower = name.toLowerCase();
         const plats = ALL_PLATFORMS.filter(p => new RegExp(`(^|[^a-z])${p}([^a-z]|$)`).test(lower));
@@ -578,7 +576,6 @@ const require = createRequire(import.meta.url), BUILDER_VERSION = '5.2.0',
         scanScoped(nmDir, '');
         return removed;
     },
-
     // ==================== 清开发文件 ====================
     pruneDevFiles = async nmDir => {
         const PATTERNS = [
@@ -680,7 +677,6 @@ const require = createRequire(import.meta.url), BUILDER_VERSION = '5.2.0',
 
         return deleted;
     },
-
     // ==================== 导出函数 ====================
     markVerified = async tempDir => {
         const p = path.join(tempDir, SNAPSHOT_FILE);
@@ -691,7 +687,6 @@ const require = createRequire(import.meta.url), BUILDER_VERSION = '5.2.0',
             await fs.writeJson(p, old, { spaces: 2 });
         } catch { }
     },
-
     optimizeNodeModules = async (tempDir, config = {}) => {
         const excludePkgs = new Set(config.exclude || []);
         const nmDir = path.join(tempDir, 'node_modules');
