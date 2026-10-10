@@ -7,7 +7,7 @@ import chalk from 'chalk';
 import { execa } from 'execa';
 import { minimatch } from 'minimatch';
 import AdmZip from 'adm-zip';
-import { markVerified, optimizeNodeModules } from './optimize-node-modules.js';
+import { markVerified, optimizeNodeModules, clearVerified, SELF_HASH } from './optimize-node-modules.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = createRequire(import.meta.url),
     CACHE_DIR = path.join(os.homedir(), '.electron-builder-cache'),
@@ -73,7 +73,7 @@ const build = async () => {
         {
             serverPath, appUrl, appName: userAppName, excludeFiles = [], excludeDependencies = [],
             excludeOutputs = [], enableLogging = false, allowScripts, menu, window: windowConfig = {},
-            advanced: userAdvanced = {}, build: buildConfig = {}
+            advanced: userAdvanced = {}, build: buildConfig = {}, optimize: optimizeCfg
         } = configModule.default;
     if (!serverPath || !appUrl) console.error(chalk.red('[错误] 配置文件缺少必填字段: serverPath, appUrl')), process.exit(1);
     // 早期配置校验(避免用户等待后才发现配置错误)
@@ -114,14 +114,12 @@ const build = async () => {
     if (process.platform === 'darwin') {
         const macCfg = buildConfig.mac || {}, macSign = macCfg.sign;
         if (macSign && macSign.certificateFile) await resolveCertFile(macSign.certificateFile);
-        if (macCfg.notarize !== undefined && typeof macCfg.notarize !== 'boolean') {
-            console.error(chalk.red('[错误] build.mac.notarize 必须为 boolean(true/false),不能是对象'));
-            process.exit(1);
-        }
+        if (macCfg.notarize !== undefined && typeof macCfg.notarize !== 'boolean')
+            console.error(chalk.red('[错误] build.mac.notarize 必须为 boolean(true/false),不能是对象')), process.exit(1);
+
         // 公证凭据检查:notarize 不为 false 时,凭据必须完整(与 electron-builder 行为一致)
         if (macCfg.notarize === true) {
-            const env = process.env,
-                appleIdGroup = ['APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'],
+            const env = process.env, appleIdGroup = ['APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'],
                 appleApiGroup = ['APPLE_API_KEY', 'APPLE_API_KEY_ID', 'APPLE_API_ISSUER'],
                 keychainGroup = ['APPLE_KEYCHAIN', 'APPLE_KEYCHAIN_PROFILE'],
                 hasAny = g => g.some(k => env[k]), hasAll = g => g.every(k => env[k]),
@@ -129,12 +127,11 @@ const build = async () => {
                     if (hasAny(g) && !hasAll(g)) {
                         const missing = g.filter(k => !env[k]);
                         console.error(chalk.red(`[错误] 公证凭据不完整(方式:${name}),缺少环境变量: ${missing.join(', ')}`));
-                        console.error(chalk.yellow('[提示] 设置凭据后才会自动公证;如不需要公证,请在 build.mac 中显式设置 notarize: false'));
+                        console.error(chalk.yellow('[提示] 设置凭据后才会自动公证;如不需要公证,请在build.mac中显式设置notarize: false'));
                         process.exit(1);
                     }
                 };
-            checkGroup(appleIdGroup, 'Apple ID');
-            checkGroup(appleApiGroup, 'API Key');
+            checkGroup(appleIdGroup, 'Apple ID'), checkGroup(appleApiGroup, 'API Key');
             checkGroup(keychainGroup, 'Keychain Profile');
         }
     }
@@ -186,7 +183,7 @@ const build = async () => {
             return relative === pattern || minimatch(relative, pattern, { dot: true, matchBase: true });
         });
     };
-    console.log(chalk.blue(`[信息] 正在复制项目文件从 ${projectRoot} 到 ${tempDir}`));
+    console.log(chalk.cyan(`[信息] 正在复制项目文件从 ${projectRoot} 到 ${tempDir}`));
     await fs.copy(projectRoot, tempDir, {
         filter: src => {
             const relative = path.relative(projectRoot, src);
@@ -225,36 +222,65 @@ const build = async () => {
         return acc;
     }, {}), snapshotData = { deps: sortedDeps, extra: extraFields }, snapshotPath = path.join(tempDir, snapshotFile);
 
-    let shouldInstall = true;
+    // 本次是否开启优化
+    if (optimizeCfg !== undefined && (optimizeCfg === null || typeof optimizeCfg !== "object"))
+        console.error(chalk.red("[错误] optimize 需为对象,如 { enabled: false } 关闭优化,{ exclude: [\"包名\"] } 排除问题包")), process.exit(1);
+    const thisOptimize = optimizeCfg === undefined || optimizeCfg.enabled !== false;
+
+    // 判断:是否重装 / 是否优化
+    let shouldInstall = true, shouldOptimize = thisOptimize, reasons = [];
     if (await fs.pathExists(snapshotPath)) {
-        const oldSnapshot = await fs.readJson(snapshotPath);
-        if (JSON.stringify(oldSnapshot.deps) === JSON.stringify(snapshotData.deps) && JSON.stringify(oldSnapshot.extra) === JSON.stringify(snapshotData.extra)) {
-            const nodeModulesPath = path.join(tempDir, 'node_modules');
-            if (await fs.pathExists(nodeModulesPath))
-                shouldInstall = false, console.log(chalk.gray('[信息] 依赖未变化,跳过安装'));
+        const old = await fs.readJson(snapshotPath),
+            depsSame = JSON.stringify(old.deps) === JSON.stringify(snapshotData.deps)
+                && JSON.stringify(old.extra) === JSON.stringify(snapshotData.extra),
+            verifiedOk = old.verified === true,
+            envSame = old.platform === process.platform && old.arch === process.arch,
+            lastOptimized = old.optimized !== false,
+            selfHashSame = old.optimizeHash === SELF_HASH,
+            nmExists = await fs.pathExists(path.join(tempDir, 'node_modules'));
+        if (!depsSame) reasons.push('依赖清单已变化');
+        if (!verifiedOk) reasons.push('上次构建未完成');
+        if (!envSame) reasons.push('运行环境已变化');
+        if (!nmExists) reasons.push('缓存目录缺失');
+        if (lastOptimized && !thisOptimize) reasons.push('优化已由开启转为关闭');
+        if (thisOptimize && !selfHashSame && lastOptimized) reasons.push('优化程序已更新');
+        if (reasons.length > 0) {
+            shouldInstall = true, shouldOptimize = thisOptimize;
+            console.log(chalk.gray('[信息] 需要重新安装依赖(原因: ' + reasons.join(', ') + ')'));
+        } else if (thisOptimize && !lastOptimized) {
+            shouldInstall = false, shouldOptimize = true;
+            console.log(chalk.gray('[信息] 依赖与环境未变化,仅需优化'));
+        } else {
+            shouldInstall = false, shouldOptimize = false;
+            console.log(chalk.gray('[信息] 依赖与环境未变化,跳过安装与优化')), await clearVerified(tempDir);
         }
+    } else {
+        console.log(chalk.gray('[信息] 需要重新安装依赖(原因: 缓存快照缺失)'));
     }
+
     if (shouldInstall) {
-        console.log(chalk.blue('[信息] 正在安装依赖...'));
+        console.log(chalk.cyan('[信息] 正在安装依赖...')), await fs.remove(path.join(tempDir, 'node_modules'));
         // 安装前先删除快照:若安装过程中断,快照缺失会触发下次强制重装
         await fs.remove(snapshotPath);
         await execa('npm', ['install', '--production', '--no-audit', '--no-fund', '--no-package-lock'], {
             cwd: tempDir, stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' }
         });
-        await fs.writeJson(snapshotPath, snapshotData, { spaces: 2 });
+        await fs.writeJson(snapshotPath, {
+            ...snapshotData, optimized: false,
+            platform: process.platform, arch: process.arch,
+            optimizeHash: SELF_HASH, verified: false
+        }, { spaces: 2 });
+        console.log(chalk.cyan('[信息] 依赖安装完成'));
     }
 
     // ==== node_modules 优化 ====
-    const optimizeCfg = buildConfig.optimize;
-    const optimizeEnabled = optimizeCfg === false ? false
-        : (optimizeCfg && typeof optimizeCfg === "object" && optimizeCfg.enabled === false) ? false
-            : true;
-    if (optimizeEnabled) {
+    if (shouldOptimize) {
+        console.log(chalk.cyan('[信息] 正在执行优化...'));
         try {
-            await optimizeNodeModules(tempDir, (optimizeCfg && typeof optimizeCfg === "object") ? optimizeCfg : {});
+            await optimizeNodeModules(tempDir, optimizeCfg || {});
         } catch (err) {
             console.error(chalk.red("[错误] node_modules 优化失败：" + err.message));
-            console.error(chalk.yellow("[提示] 可在 desktopAppConfig.js 中设置 optimize: false 关闭优化，"));
+            console.error(chalk.yellow("[提示] 可在 desktopAppConfig.js 中设置 optimize: { enabled: false } 关闭优化,"));
             console.error(chalk.yellow("       或用 optimize: { exclude: [\"包名\"] } 排除问题包。"));
             process.exit(1);
         }
@@ -273,27 +299,20 @@ const build = async () => {
     let electronVersion;
     try {
         const ePkg = await fs.readJson(require.resolve('electron/package.json'));
-        electronVersion = ePkg.version, console.log(chalk.blue('[信息] Electron 版本: ' + electronVersion));
+        electronVersion = ePkg.version, console.log(chalk.cyan('[信息] Electron 版本: ' + electronVersion));
     } catch (err) {
         console.error(chalk.red('[错误] 未找到 electron 包,请先安装;')), process.exit(1);
     }
     // 构建 configObj
     const {
         outputDir = './dist', inno: innoConfig = {}, appId = 'com.example.app', publisher: userPublisher,
-        shortcutName: userShortcutName, win: userWin, mac: userMac, linux: userLinux, dmg: userDmg, optimize: _optimize, ...restBuild
+        shortcutName: userShortcutName, win: userWin, mac: userMac, linux: userLinux, dmg: userDmg, ...restBuild
     } = buildConfig, userExcludePatterns = excludeFiles.map(p => {
         let pattern = p.replace(/^\.\//, '');
         if (pattern.endsWith('/')) return `!${pattern.slice(0, -1)}/**`;
         return `!${pattern}`;
     }),
-        files = [
-            "**/*", '!builder.json', "!**/*.map", "!**/*.ts", "!**/*.cts", "!**/*.mts",
-            "!node_modules/**/*.md", "!node_modules/**/*.markdown", "!node_modules/**/license*",
-            "!node_modules/**/licence*", "!node_modules/**/LICENSE*", "!node_modules/**/LICENCE*",
-            "!node_modules/node/**", "!node_modules/node-win*/**", "!node_modules/node-darwin*/**",
-            "!node_modules/node-linux*/**", "!node_modules/node-freebsd*/**", "!node_modules/node-sunos*/**",
-            "!node_modules/node-aix*/**", ...userExcludePatterns
-        ], output = path.join(tempDir, 'app'), configObj = {
+        files = ["**/*", "!builder.json", ...userExcludePatterns], output = path.join(tempDir, 'app'), configObj = {
             files, asar: false, nativeModules: { npmRebuild: false }, electronVersion, appId,
             productName: appName, ...restBuild
         };
@@ -323,9 +342,7 @@ const build = async () => {
                     if (s.certificateFile) envExtra.CSC_LINK = s.certificateFile;
                     if (s.certificatePassword) envExtra.CSC_KEY_PASSWORD = s.certificatePassword;
                     // 剥离非 electron-builder v27 官方字段,避免 additionalProperties:false 拒绝
-                    delete s.certificateFile;
-                    delete s.certificatePassword;
-                    delete s.notarize;
+                    delete s.certificateFile, delete s.certificatePassword, delete s.notarize;
                 }
                 Object.assign(cfg.mac, userMacCfg || {});
                 cfg.dmg = { iconSize: 80, window: { width: 540, height: 380 }, ...cfg.dmg, ...userDmgCfg };
@@ -350,16 +367,14 @@ const build = async () => {
         };
     if (!platformHandlers[platform]) console.error(chalk.red(`[错误] 不支持的操作系统: ${platform}`)), process.exit(1);
 
-    const handlerArgs = platform === 'win32' ? [userWin]
-        : platform === 'darwin' ? [userMac, userDmg]
-            : [userLinux];
-    const handlerResult = await platformHandlers[platform](configObj, ...handlerArgs),
+    const handlerArgs = platform === 'win32' ? [userWin] : platform === 'darwin' ? [userMac, userDmg] : [userLinux],
+        handlerResult = await platformHandlers[platform](configObj, ...handlerArgs),
         platformArgs = handlerResult.args, subDir = handlerResult.subDir, envExtra = handlerResult.envExtra || {},
-        appDir = path.join(output, subDir), configFile = path.join(tempDir, 'builder.json');
-    // 钩子路径归一化:electron-builder 要求钩子文件必须位于 --project (tempDir) 内
-    // 支持用户填相对路径(相对项目根)或绝对路径;工具自动复制到 tempDir 并改写为 tempDir 内绝对路径
-    const HOOK_FIELDS = ['beforeBuild', 'beforePack', 'afterExtract', 'afterPack', 'afterSign',
-        'artifactBuildStarted', 'artifactBuildCompleted', 'afterAllArtifactBuild', 'onNodeModuleFile'];
+        appDir = path.join(output, subDir), configFile = path.join(tempDir, 'builder.json'),
+        // 钩子路径归一化:electron-builder 要求钩子文件必须位于 --project (tempDir) 内
+        // 支持用户填相对路径(相对项目根)或绝对路径;工具自动复制到 tempDir 并改写为 tempDir 内绝对路径
+        HOOK_FIELDS = ['beforeBuild', 'beforePack', 'afterExtract', 'afterPack', 'afterSign', 'artifactBuildStarted',
+            'artifactBuildCompleted', 'afterAllArtifactBuild', 'onNodeModuleFile'];
     for (const field of HOOK_FIELDS) {
         const hookValue = configObj[field];
         if (typeof hookValue !== 'string' || !hookValue) continue;
@@ -369,15 +384,14 @@ const build = async () => {
         const relToTemp = path.relative(tempDir, absHookPath);
         if (relToTemp.startsWith('..') || path.isAbsolute(relToTemp)) {
             const dest = path.join(tempDir, path.basename(absHookPath));
-            await fs.copy(absHookPath, dest, { overwrite: true });
-            configObj[field] = dest;
-        } else {
-            configObj[field] = absHookPath;
+            await fs.copy(absHookPath, dest, { overwrite: true }), configObj[field] = dest;
         }
+        else configObj[field] = absHookPath;
     }
     await fs.writeJson(configFile, configObj, { spaces: 2 });
     // 构建可执行文件（electron-builder）
-    let retries = 2, lastError = null, success = false;
+    let retries = 2, lastError = null, success = false, ebOutput = [];
+    console.log(chalk.cyan('[信息] 正在打包应用...'));
     while (retries > 0) {
         try {
             await execa(
@@ -385,7 +399,7 @@ const build = async () => {
                 ['--no-install', 'electron-builder', '--project', tempDir, '--config', configFile, ...platformArgs],
                 {
                     cwd: process.cwd(),
-                    stdio: 'inherit',
+                    stdio: process.env.OPTIMIZE_DEBUG ? 'inherit' : ['ignore', 'pipe', 'pipe'],
                     env: {
                         ...process.env,
                         ELECTRON_MIRROR: 'https://npmmirror.com/mirrors/electron/',
@@ -398,6 +412,7 @@ const build = async () => {
             ), success = true;
             break;
         } catch (error) {
+            if (!process.env.OPTIMIZE_DEBUG) ebOutput.push(error.stdout || '', error.stderr || '');
             lastError = error, retries--;
             if (retries > 0) {
                 console.warn(chalk.yellow(`[警告] 生成可执行文件失败,剩余 ${retries} 次尝试`));
@@ -405,7 +420,13 @@ const build = async () => {
             }
         }
     }
-    if (!success) console.error(chalk.red('[错误] 生成可执行文件失败:'), lastError), process.exit(1);
+    if (!success) {
+        if (!process.env.OPTIMIZE_DEBUG && ebOutput.length > 0) console.error(chalk.gray(ebOutput.join('\n')));
+        console.error(chalk.red('[错误] 生成可执行文件失败:'), lastError);
+        const missingDeps = Object.keys(snapshotData.deps || {}).filter(d => !fs.existsSync(path.join(tempDir, 'node_modules', d)));
+        if (missingDeps.length > 0) console.error(chalk.yellow('[提示] 依赖文件缺失: ' + missingDeps.join(', ') + ',再次运行构建命令即可自动重装修复'));
+        process.exit(1);
+    }
 
     const copyArtifacts = async (srcDir, targetDir, patterns, excludePatterns) => {
         if (!await fs.pathExists(srcDir)) return false;
@@ -499,38 +520,63 @@ const build = async () => {
             sections.push(langSection), sections.push(`[Icons]\n${iconEntry} `), runEntries.push(hideCmd);
             sections.push(`[Run]\n${runEntries.join('\n')} `);
             // 卸载时用户数据处理
-            sections.push(`[Code]
+            // usePreviousAppDir=true 时附加智能记忆:记住上次安装目录;清除用户数据时一并清除
+            const usePrevDir = inno.usePreviousAppDir !== false, prevDirCode = usePrevDir ?
+                `procedure CurStepChanged(CurStep: TSetupStep);
+                 begin
+                   if CurStep = ssPostInstall then
+                     RegWriteStringValue(HKCU, 'Software\\${appId}', 'InstallDir', ExpandConstant('{app}'));
+                 end;
+
+                 procedure CurPageChanged(CurPageID: Integer);
+                 var
+                   LastDir: String;
+                 begin
+                   if CurPageID = wpSelectDir then
+                     if RegQueryStringValue(HKCU, 'Software\\${appId}', 'InstallDir', LastDir) then
+                         WizardForm.DirEdit.Text := LastDir;
+                 end; ` : '';
+            sections.push(`[Code]\n${prevDirCode}
                 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
                 var
                   mres: Integer;
                   userDataDir, BatchFile, AppDir: string;
                   ResultCode: Integer;
                 begin
+                  if CurUninstallStep = usUninstall then
+                  begin
+                    Exec('taskkill', '/f /im ' + '${exeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                    Exec('netsh', 'advfirewall firewall delete rule name="' + '${exeName.replace(/\.exe$/i, '')}' + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                    if ResultCode <> 0 then
+                      ShellExec('runas', 'netsh', 'advfirewall firewall delete rule name="' + '${exeName.replace(/\.exe$/i, '')}' + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                  end;
                   if CurUninstallStep = usPostUninstall then
                   begin
-                    mres := MsgBox('是否删除用户数据？', mbConfirmation, MB_YESNO or MB_DEFBUTTON2);
+                    Exec('taskkill', '/f /im ' + '${exeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                    mres := MsgBox('是否删除用户数据？', mbConfirmation, MB_YESNO or MB_DEFBUTTON1);
                     if mres = IDYES then
                     begin
                       userDataDir := ExpandConstant('{userappdata}') + '\\' + '${appName}';
                       if DirExists(userDataDir) then DelTree(userDataDir, True, True, True);
-                      Exec('taskkill', '/f /im ' + '${exeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-                      BatchFile := ExpandConstant('{tmp}') + '\\cleanup.bat';
-                      AppDir := ExpandConstant('{app}');
-                      if not FileExists(BatchFile) then
-                      begin
-                        if not SaveStringToFile(BatchFile,
-                          '@echo off' + #13#10 +
-                          'set /a retry=0' + #13#10 +
-                          ':retry' + #13#10 +
-                          'rmdir /s /q "' + AppDir + '" 2>nul' + #13#10 +
-                          'if not exist "' + AppDir + '" (del /q "' + BatchFile + '" 2>nul & exit /b)' + #13#10 +
-                          'set /a retry+=1' + #13#10 +
-                          'if !retry! geq 15 exit /b' + #13#10 +
-                          'timeout /t 2 /nobreak >nul' + #13#10 +
-                          'goto retry', False) then Exit;
-                      end;
-                      ShellExec('runas', ExpandConstant('{cmd}'), '/c "' + BatchFile + '"', '', SW_HIDE, ewNoWait, ResultCode);
+                      RegDeleteKeyIncludingSubkeys(HKCU, 'Software\\${appId}');
                     end;
+                    BatchFile := GetEnv('TEMP') + '\\deskapp-cleanup.bat';
+                    AppDir := ExpandConstant('{app}');
+                    if not FileExists(BatchFile) then
+                    begin
+                      if not SaveStringToFile(BatchFile,
+                        '@echo off' + #13#10 +
+                        'setlocal enabledelayedexpansion' + #13#10 +
+                        'set /a retry=0' + #13#10 +
+                        ':retry' + #13#10 +
+                        'rmdir /s /q "' + AppDir + '" 2>nul' + #13#10 +
+                        'if not exist "' + AppDir + '" (del /q "' + BatchFile + '" 2>nul & exit /b)' + #13#10 +
+                        'set /a retry+=1' + #13#10 +
+                        'if !retry! geq 15 exit /b' + #13#10 +
+                        'timeout /t 2 /nobreak >nul' + #13#10 +
+                        'goto retry', False) then Exit;
+                    end;
+                    ShellExec('open', ExpandConstant('{cmd}'), '/c "' + BatchFile + '"', '', SW_HIDE, ewNoWait, ResultCode);
                   end;
                 end;`);
             return sections.join('\n\n');
@@ -563,7 +609,7 @@ const build = async () => {
             await fs.ensureDir(cacheDir);
 
             const zipPath = path.join(cacheDir, `${innoDirName}.zip`);
-            console.log(chalk.blue(`[信息] 正在下载最新版:${latestTag}...`));
+            console.log(chalk.cyan(`[信息] 正在下载最新版:${latestTag}...`));
             try {
                 const res = await fetch(asset.browser_download_url);
                 if (!res.ok) throw new Error(`下载失败: ${res.status}`);
@@ -686,8 +732,12 @@ const build = async () => {
 const runCLI = async () => {
     const command = process.argv[2];
     if (!command || command === 'help' || command === '--help' || command === '-h')
-        console.log(`用法:先配置 desktopAppConfig.js 文件,然后运行->desktop-builder build 指令构建桌面应用程序`), process.exit(0);
-    if (command === 'build') await build();
+        console.log(`用法:先配置 desktopAppConfig.js 文件,然后运行->desktop-builder build 指令构建桌面应用程序`),
+            console.log(`     加 --debug 可显示详细日志(优化阶段每个包的处理、electron-builder 完整输出)`), process.exit(0);
+    if (command === 'build') {
+        if (process.argv.includes('--debug')) process.env.OPTIMIZE_DEBUG = '1';
+        await build();
+    }
     else console.error(`未知命令: ${command}`), console.log('请运行 "desktop-builder --help" 查看用法;'), process.exit(1);
 };
 export { runCLI, build };

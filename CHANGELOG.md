@@ -1,5 +1,5 @@
 # 变更日志
-## [6.0.0] - 2026-10-07
+## [6.0.0] - 2026-10-10 21:59
 ### 新增
 - **node_modules 优化系统（默认开启）**：构建时自动执行六阶段优化，大幅减少打包文件数、加速应用冷启动。不改变用户代码、不改变项目结构、对任意 Node.js 项目通用；
   - **阶段 1 合并 JS**：按包入口 bundle，多个 JS 文件合并为单文件（`__bundled__.mjs` 或 `__bundled__.cjs`）；
@@ -7,39 +7,69 @@
     - CJS 包保持 CJS、ESM 包保持 ESM，不改变包类型语义；
     - CJS 包若为 `module.exports = require_xxx()`（整体赋值）形式，自动追加显式导出声明，确保 `cjs-module-lexer` 能识别命名导出（如 `import { toDataURL } from 'qrcode'`）；
     - 保留被 `package.json` `scripts` 引用的文件（如 `copy-files.js`），避免破坏安装期脚本；
+    - 位于资源目录（postinstall 引用）的 JS 一并处理：被引用则合并、未引用则提前删除；
   - **阶段 2 清空复制到项目根的资源**：扫描各包 `postinstall` 引用的目录/文件（如 `templates/` / `static/` / `customize/`），**保留目录结构、清空内容**，让包内 `existsSync` 自检通过；被 import/require 的文件保留不删；
-  - **阶段 3 清平台二进制**：删除非当前平台的 `prebuilds/` / `prebuilt/` 子目录，以及 `@scope/平台纯二进制包`（如 `@esbuild/win32-x64`、`@flun/passport-desktop-win32-x64-msvc`）；
-  - **阶段 4 清开发文件**：删除 `.md` / `.map` / `.d.ts` / `.ts` / `.h` / `.c` / `.gyp` / `tsconfig.json` / `.nycrc` / `.editorconfig` / `package-lock.json` 等非运行文件；
+  - **阶段 3 清平台二进制（三层识别 + 平台/架构双维度）**：逐文件判定，删除非当前平台 / 架构的二进制；
+    - **三层识别**：① 目录名含其他平台词；② 文件后缀为系统专有（`.exe` / `.dll` / `.dylib` / `.so`）；③ 读文件头魔数（PE `MZ` / ELF `7F454C46` / Mach-O `CFFAEDFE` 等）；
+    - **平台 + 架构双维度**：仅平台相同不够，还需架构相同；从 PE 头 `Machine`、ELF 头 `e_machine`、Mach-O 头 `cputype` 解析架构（x64 / arm64 / ia32 / arm），在 win x64 上删 `win32-arm64`、在 mac arm64 上删 `darwin-x64` 等；
+    - 目录名可随意改、后缀可缺失，靠文件内容判定；识别不出的（压缩包 / 空壳 / 未知格式）**保守放行**；
+    - 删除 `@scope/平台纯二进制包`（如 `@esbuild/win32-x64`、`@flun/passport-desktop-win32-x64-msvc`）；
+  - **阶段 4 清开发文件**：删除 `.md` / `.map` / `.d.ts` / `.ts` / `.h` / `.c` / `.gyp` / `tsconfig.json` / `.nycrc` / `.editorconfig` / `package-lock.json` 等非运行文件；**递归进入嵌套 `node_modules`**，清除多层依赖中的同类文件；
   - **阶段 5 清中间产物**：删除 `package.json.orig` 等合并过程中的临时文件；
-  - **阶段 6 清不参与运行的文件**：对齐 `build.js` 的 `files` 排除规则，删除 `license*` / `licence*` / `LICENSE*` / `.ts` / `.cts` / `.mts` / `node` 假包 / `node-win*` 等平台假包；
-- **优化缓存**：`.deps-snapshot.json` 新增 `verified` / `platform` / `arch` / `builderVersion` 四字段；
-  - 依赖未变 + 三字段匹配 + `verified === true` → 跳过优化（二次构建零开销）；
-  - 优化完成时不写 `verified`，只有**整条构建流程成功**（含 electron-builder + Inno Setup）才由 `build.js` 调 `markVerified(tempDir)` 写入 `verified = true`；
-  - 构建失败时 `verified` 保持 `false`，下次自动重跑优化，保证 node_modules 状态与构建产物一致；
+  - **阶段 6 清不参与运行的文件和空目录**：删除 `license*` / `licence*` / `LICENSE*` / `LICENCE*`（含 `LICENSE-MIT` 等变体）/ `.ts` / `.cts` / `.mts`、顶层 `node` 假包、`node-win*` / `node-darwin*` / `node-linux*` 等平台假包，并自底向上清除空目录（如各包合并后遗留的 `dist/` / `src/`）；
+- **优化缓存（内容指纹）**：`.deps-snapshot.json` 记录 `verified` / `platform` / `arch` / `optimizeHash` / `optimized` 等字段；
+  - `optimizeHash` 为 `optimize-node-modules.js` 的 SHA256 前 16 位，**优化代码一改，缓存自动失效**，无需手动维护版本号；
+  - 只有**整条构建流程成功**（含 electron-builder + Inno Setup）才写入 `verified = true`；构建失败保持 `false`，下次自动重跑，保证 `node_modules` 状态与构建产物一致；
+- **优化判断与执行策略**：构建时按三项结果决定动作——**重装并优化** / **仅优化** / **跳过**；
+  - 触发**重装**（任一）：无快照 / 依赖清单变化 / 上次构建未完成 / 运行环境（平台、架构）变化 / 缓存目录缺失 / 优化由开启转为关闭 / 优化程序已更新（且上次为优化态）；
+  - **仅优化**（不重装）：依赖与环境均未变化，仅优化由关闭转为开启；
+  - **跳过**：依赖与环境未变化、上次构建成功、优化状态一致；
+- **构建过程提示**：三类动作均打印明确原因，如 `需要重新安装依赖(原因: 依赖清单已变化, 上次构建未完成)`、`依赖与环境未变化,仅需优化`、`依赖与环境未变化,跳过安装与优化`；
+- **`--debug` 调试开关**：`npx desktop-builder build --debug` 显示详细日志——优化各阶段明细（合并入口、资源目录 JS、平台/架构删除原因）、electron-builder 完整输出；默认模式下这些噪声被隐藏，仅构建失败时打印 electron-builder 输出便于排查；
 - **优化配置**（`desktopAppConfig.js`）：
-  - `optimize: false` 关闭优化；
-  - `optimize: { exclude: ['包名'] }` 精确排除特定包（如某个包合并后运行异常）。
+  - `optimize: { enabled: false }` 关闭优化；
+  - `optimize: { exclude: ['包名'] }` 精确排除特定包（如某个包合并后运行异常）；
+- **安装目录记忆（`inno.usePreviousAppDir`，默认开启）**：
+  - 卸载时用户选择保留数据 → 记录当前安装目录（`HKCU\Software\<appId>\InstallDir`）；
+  - 下次安装时自动作为默认安装路径（`usePreviousAppDir: false` 可关闭）；
+  - 用户选择清除数据 → 该记录一并删除。
+- **卸载清理增强**：
+  - **防火墙规则清理**：卸载时自动删除应用同名（`exeName` 去扩展名）的 Windows 防火墙规则，避免应用运行时自动生成的规则随多次安装累积、影响应用行为；
+  - **安装目录无条件清理**：卸载时安装目录无论用户是否清除数据都会被清空（原逻辑将安装目录清理绑定在"清除数据"选项上）；
+  - **用户数据清理顺序修正**：先终止进程（`taskkill`）再删除用户数据目录，确保文件句柄已释放、删除彻底。
+- **构建健壮性**：
+  - **上次构建失败 → 强制重装**：快照 `verified !== true` 时不跳过安装，避免残缺 `node_modules` 被沿用导致打包失败；
+  - **装前删 `node_modules`**：优化后的树无法在其上增量安装，重装前先清空 `node_modules`，确保干净重装；
+  - **失败提示**：打包失败时检查 `dependencies` 声明的包是否实际存在，缺失则精确报出包名，并提示"再次运行构建命令即可自动重装修复"。
 
 ### 修复
-- **`waitForServer` 冷启动慢（重要）**：原逻辑通过 `dns.promises.lookup(hostname)` 解析 `appUrl` 域名，返回的可能是公网 IPv6，导致每次探测本机服务都绕外网、超时后等待 2 秒重试。修复为直接使用 `127.0.0.1` + 200ms 轮询，冷启动节省数秒；
-  - 同时删除无用的 `dns` import。
+- **`optimize` 配置读取位置错误（重要）**：原代码读取 `build.optimize`，但配置中 `optimize` 为**顶层字段**，导致 `optimize: { enabled: false }` 完全不生效（始终按默认开启执行）；修正为读取顶层字段，关闭/排除配置恢复正常；
+- **`files` 数组职责收窄**：node_modules 内的排除（`.md` / `license` / 平台假包等）**完全交由优化系统处理**，`files` 仅保留工具自身生成文件（`builder.json`）与用户 `excludeFiles`；不再越权代用户排除项目内的 `.ts` / `.map` 等文件；
+- **`waitForServer` 冷启动慢（重要）**：原逻辑通过 `dns.promises.lookup(hostname)` 解析 `appUrl` 域名，返回的可能是公网 IPv6，导致每次探测本机服务都绕外网、超时后等待 2 秒重试。修复为直接使用 `127.0.0.1` + 200ms 轮询，冷启动节省数秒；同时删除无用的 `dns` import。
+- **卸载静默模式默认选项错误**：原 `MsgBox` 使用 `MB_DEFBUTTON2`（默认"不清理"），静默卸载时用户数据与安装目录都不清；改为 `MB_DEFBUTTON1`（默认清理）。
+- **卸载清理脚本位置错误**：原清理脚本写入 `{tmp}`（卸载器临时目录），卸载器退出后目录被清、`cmd` 尚未读取脚本，导致安装目录清理失败；改为写入系统 TEMP（`GetEnv('TEMP')`）。
+- **清理脚本变量展开失效**：原 batch 脚本缺少 `setlocal enabledelayedexpansion`，`!retry!` 语法不生效、重试逻辑形同虚设；补充该语句。
+- **卸载清理顺序错误**：原逻辑先删除用户数据目录、后终止进程，导致目录被占用、删除不净；改为先 `taskkill` 再删除。
+- **防火墙规则名不匹配**：原代码用 `exeName`（含 `.exe`）作为规则名，但 Windows 防火墙自动生成的规则名不含扩展名，导致删除失败；改为剥离 `.exe` 后再匹配。
+- **移除 `taskkill` 后的多余等待**：`Exec('taskkill', ..., ewWaitUntilTerminated, ...)` 已等待进程结束、句柄随后释放，原 `Sleep` 属误判；移除后卸载流畅无卡顿。
 
 ### 性能
 - **实测（中等规模 Node.js 项目）**：
   - 应用冷启动（窗口出现）：约 **8.7s → 4.7s**；
-  - 打包后 `node_modules` 文件数：约 **2542 → 591**（-77%）；
+  - 打包后 `node_modules` 文件数：约 **2542 → 590**（-77%）；
   - 打包后 `node_modules` 体积：约 **391MB → 75MB**（-81%）；
   - 首次构建因新增 `esbuild` 依赖与优化流程约增加 10~30 秒，**后续构建命中缓存后无额外开销**。
 
 ### 文档
-- **README**：补充 `optimize` 配置说明、优化系统工作原理、异常时的关闭/排除方式；
-- **`desktopAppConfig.js` 模板**：加入 `optimize` 配置注释（默认开启说明、关闭方式、排除方式）。
+- **README**：补充 `optimize` 配置说明（对象格式）、优化系统工作原理、`--debug` 调试开关、异常时的关闭/排除方式；
+- **`desktopAppConfig.js` 模板**：`optimize` 改为对象格式注释（`enabled` 开关、`exclude` 排除）；更新 `usePreviousAppDir` 注释（说明"清除用户数据时一并清除"）。
 
 ### 升级注意事项
 - **6.0.0 起 `node_modules` 优化默认开启**，用户无需做任何配置即可享受优化收益；
+- **优化配置改为对象格式**：`optimize: { enabled: false }` 关闭，`optimize: { exclude: ['包名'] }` 排除；
 - **升级后首次构建**会因新增依赖（`esbuild`）与优化流程而变慢，请耐心等待；后续构建命中缓存后无额外开销；
 - 若**构建或运行异常**，按以下顺序排查：
-  1. 在 `desktopAppConfig.js` 中设置 `optimize: false` 关闭优化，验证是否为优化系统引起；
+  1. 在 `desktopAppConfig.js` 中设置 `optimize: { enabled: false }` 关闭优化，验证是否为优化系统引起；
   2. 若确认是某个包合并后异常，使用 `optimize: { exclude: ['包名'] }` 精确排除该包；
   3. 若需彻底重来，删除临时目录 `%TEMP%\desktop-builder-build`（Windows）后重新构建，工具会自动完整重装依赖并重新优化。
 ## [5.2.0] - 2026-10-04 21:15

@@ -14,10 +14,12 @@ export default {
 	appName: null,                       // 应用显示名称(默认从 package.json 读取 name)
 	enableLogging: false,                // 是否启用日志文件记录,默认关闭
 
-  // node_modules 优化:合并 JS + 清空已复制到项目根的资源 + 清平台二进制 + 清开发文件,加速冷启动
-  // 默认开启。若构建或运行异常,可按下述方式关闭或排除问题包
-  // optimize: false,                    // 关闭优化
-  // optimize: { exclude: ['包名'] },    // 不优化有异常的特定包（如某个包合并后运行异常）
+	// node_modules 优化:合并 JS + 清空已复制到项目根的资源 + 清平台二进制 + 清开发文件,加速冷启动
+	// 默认开启。若构建或运行异常,可按下述方式关闭或排除问题包
+    optimize: {
+        enabled: true,                     // 是否启用（默认 true）
+        // exclude: ['包名'],            // 排除的包（默认空）
+    },
 	// 窗口配置
 	window: {
 		width: 1200,                      // 默认宽度(px)
@@ -206,7 +208,7 @@ export default {
 			// 高级选项
 			languageDetectionMethod: 'uilanguage', // 语言检测方式:uilanguage / locale / none
 			allowCancelDuringInstall: true,    	   // 是否允许安装过程中取消(默认true)
-			usePreviousAppDir: true,       	   	   // 是否记住上次安装目录(升级时,默认true)
+			usePreviousAppDir: true,       	   	   // 是否记住上次安装目录(清除用户数据时一并清除,默认true)
 			usePreviousGroup: true,        	   	   // 升级时是否记住上次的开始菜单文件夹(默认true)
 			usePreviousSetupType: true,    	   	   // 升级时是否记住上次选择的安装类型(默认true)
 			usePreviousTasks: true,        	   	   // 升级时是否记住上次选择的任务(如桌面快捷方式,默认true)
