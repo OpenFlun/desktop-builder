@@ -3,14 +3,20 @@ import path from 'path';
 import { createRequire } from 'module';
 import chalk from 'chalk';
 
-const require = createRequire(import.meta.url),
-    SELF_HASH = (() => {
-        try {
-            const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
-            return require('crypto').createHash('sha256').update(src).digest('hex').slice(0, 16);
-        } catch { return 'unknown'; }
-    })(),
-    subpath = (...parts) => './' + path.posix.join(...parts),
+const require = createRequire(import.meta.url);
+
+/**
+ * 当前优化文件的 SHA256 前 16 位（缓存指纹；优化代码一改，缓存自动失效）
+ * >查看定义:@see {@link optimizeNodeModules}
+ */
+const SELF_HASH = (() => {
+    try {
+        const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
+        return require('crypto').createHash('sha256').update(src).digest('hex').slice(0, 16);
+    } catch { return 'unknown'; }
+})();
+
+const subpath = (...parts) => './' + path.posix.join(...parts),
     BUNDLED_DIR = '__bundled__', NM_DIR = 'node_modules', PKG_JSON = 'package.json', CUR_PLAT = process.platform,
     CUR_ARCH = process.arch, ENTRY_EXTS = ['.js', '.cjs', '.mjs', '/index.js', '/index.cjs', '/index.mjs'],
     JS_RE = /\.(js|mjs|cjs)$/, DOT_SLASH_RE = /^\.\//, POSIX_RE = /\\/g, PKG_SUBPATH = subpath(PKG_JSON),
@@ -43,17 +49,25 @@ const require = createRequire(import.meta.url),
         const old = await fs.readJson(p);
         old.platform = CUR_PLAT, old.arch = CUR_ARCH, old.optimizeHash = SELF_HASH, old.verified = false, old.optimized = true;
         await fs.writeJson(p, old, { spaces: 2 });
-    },
-    clearVerified = async tempDir => {
-        const p = path.join(tempDir, SNAPSHOT_FILE);
-        if (!await fs.pathExists(p)) return;
-        try {
-            const old = await fs.readJson(p);
-            if (old.verified !== false) old.verified = false, await fs.writeJson(p, old, { spaces: 2 });
-        } catch { }
-    },
-    // ==================== 扫描工具 ====================
-    findPackages = dir => {
+    };
+
+/**
+ * 清除快照中的 verified 标记（优化开始或构建失败时调用）
+ * >查看定义:@see {@link markVerified}
+ * @param {string} tempDir 临时构建目录
+ * @returns {Promise<void>}
+ */
+const clearVerified = async tempDir => {
+    const p = path.join(tempDir, SNAPSHOT_FILE);
+    if (!await fs.pathExists(p)) return;
+    try {
+        const old = await fs.readJson(p);
+        if (old.verified !== false) old.verified = false, await fs.writeJson(p, old, { spaces: 2 });
+    } catch { }
+};
+
+// ==================== 扫描工具 ====================
+const findPackages = dir => {
         const result = [];
         if (!fs.existsSync(dir)) return result;
         for (const entry of fs.readdirSync(dir)) {
@@ -604,17 +618,34 @@ const require = createRequire(import.meta.url),
         };
         cleanEmpty(nmDir);
         return deleted;
-    },
-    // ==================== 导出函数 ====================
-    markVerified = async tempDir => {
-        const p = path.join(tempDir, SNAPSHOT_FILE);
-        if (!await fs.pathExists(p)) return;
-        try {
-            const old = await fs.readJson(p);
-            old.verified = true, await fs.writeJson(p, old, { spaces: 2 });
-        } catch { }
-    },
-    optimizeNodeModules = async (tempDir, config = {}) => {
+    };
+
+// ==================== 导出函数 ====================
+
+/**
+ * 标记快照 verified=true（构建全流程成功后由 build.js 调用）
+ * >查看定义:@see {@link clearVerified}
+ * @param {string} tempDir 临时构建目录
+ * @returns {Promise<void>}
+ */
+const markVerified = async tempDir => {
+    const p = path.join(tempDir, SNAPSHOT_FILE);
+    if (!await fs.pathExists(p)) return;
+    try {
+        const old = await fs.readJson(p);
+        old.verified = true, await fs.writeJson(p, old, { spaces: 2 });
+    } catch { }
+};
+
+/**
+ * 执行 node_modules 六阶段优化
+ * >查看定义:@see {@link SELF_HASH}
+ * @param {string} tempDir 临时构建目录
+ * @param {object} [config] 优化配置
+ * @param {string[]} [config.exclude] 排除的包名列表
+ * @returns {Promise<object>} 各阶段统计（merged / cleared / platform / devFiles / intermediates / filesRules）
+ */
+const optimizeNodeModules = async (tempDir, config = {}) => {
         const excludePkgs = new Set(config.exclude || []), nmDir = path.join(tempDir, NM_DIR),
             snapPath = path.join(tempDir, SNAPSHOT_FILE);
 

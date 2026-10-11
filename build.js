@@ -516,17 +516,16 @@ const build = async () => {
                     `Flags: postinstall nowait skipifsilent`;
                 runEntries.push(runEntry);
             }
+            const tasksSection = `\n[Tasks]\nName: "defenderExclusion"; Description: "将应用加入 Windows Defender 排除项,加快启动"; Flags: checkedonce `;
             sections.push(`[Setup]\n${setupLines.join('\n')} `), sections.push(`[Files]\n${filesSection} `);
-            sections.push(langSection), sections.push(`[Icons]\n${iconEntry} `), runEntries.push(hideCmd);
+            sections.push(langSection), sections.push(tasksSection), sections.push(`[Icons]\n${iconEntry} `), runEntries.push(hideCmd);
             sections.push(`[Run]\n${runEntries.join('\n')} `);
             // 卸载时用户数据处理
             // usePreviousAppDir=true 时附加智能记忆:记住上次安装目录;清除用户数据时一并清除
-            const usePrevDir = inno.usePreviousAppDir !== false, prevDirCode = usePrevDir ?
-                `procedure CurStepChanged(CurStep: TSetupStep);
-                 begin
-                   if CurStep = ssPostInstall then
-                     RegWriteStringValue(HKCU, 'Software\\${appId}', 'InstallDir', ExpandConstant('{app}'));
-                 end;
+            const usePrevDir = inno.usePreviousAppDir !== false,
+                regWrite = usePrevDir ? `
+                     RegWriteStringValue(HKCU, 'Software\\${appId}', 'InstallDir', ExpandConstant('{app}'));` : '',
+                curPageChanged = usePrevDir ? `
 
                  procedure CurPageChanged(CurPageID: Integer);
                  var
@@ -535,12 +534,30 @@ const build = async () => {
                    if CurPageID = wpSelectDir then
                      if RegQueryStringValue(HKCU, 'Software\\${appId}', 'InstallDir', LastDir) then
                          WizardForm.DirEdit.Text := LastDir;
-                 end; ` : '';
+                 end; ` : ' ',
+                prevDirCode = `procedure CurStepChanged(CurStep: TSetupStep);
+                 var
+                   ResultCode: Integer;
+                   AppDir, PsFile: String;
+                 begin
+                   if CurStep = ssPostInstall then
+                   begin${regWrite}
+                     if WizardIsTaskSelected('defenderExclusion') then
+                     begin
+                       AppDir := ExpandConstant('{app}');
+                       PsFile := ExpandConstant('{tmp}') + '\\defender_add.ps1';
+                       SaveStringToFile(PsFile, 'Add-MpPreference -ExclusionPath ''' + AppDir + '''', False);
+                       Exec('powershell', '-NoProfile -ExecutionPolicy Bypass -File "' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                       if ResultCode <> 0 then
+                         ShellExec('runas', 'powershell', '-NoProfile -ExecutionPolicy Bypass -File "' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                     end;
+                   end;
+                 end;${curPageChanged}`;
             sections.push(`[Code]\n${prevDirCode}
                 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
                 var
                   mres: Integer;
-                  userDataDir, BatchFile, AppDir: string;
+                  userDataDir, BatchFile, AppDir, PsFile: string;
                   ResultCode: Integer;
                 begin
                   if CurUninstallStep = usUninstall then
@@ -559,6 +576,11 @@ const build = async () => {
                       userDataDir := ExpandConstant('{userappdata}') + '\\' + '${appName}';
                       if DirExists(userDataDir) then DelTree(userDataDir, True, True, True);
                       RegDeleteKeyIncludingSubkeys(HKCU, 'Software\\${appId}');
+                      PsFile := GetEnv('TEMP') + '\\defender_remove.ps1';
+                      SaveStringToFile(PsFile, 'Remove-MpPreference -ExclusionPath ''' + ExpandConstant('{app}') + ''' -ErrorAction SilentlyContinue', False);
+                      Exec('powershell', '-NoProfile -ExecutionPolicy Bypass -File "' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                      if ResultCode <> 0 then
+                        ShellExec('runas', 'powershell', '-NoProfile -ExecutionPolicy Bypass -File "' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                     end;
                     BatchFile := GetEnv('TEMP') + '\\deskapp-cleanup.bat';
                     AppDir := ExpandConstant('{app}');
@@ -570,7 +592,7 @@ const build = async () => {
                         'set /a retry=0' + #13#10 +
                         ':retry' + #13#10 +
                         'rmdir /s /q "' + AppDir + '" 2>nul' + #13#10 +
-                        'if not exist "' + AppDir + '" (del /q "' + BatchFile + '" 2>nul & exit /b)' + #13#10 +
+                        'if not exist "' + AppDir + '" (del /q "' + BatchFile + '" "' + GetEnv('TEMP') + '\\defender_remove.ps1" 2>nul & exit /b)' + #13#10 +
                         'set /a retry+=1' + #13#10 +
                         'if !retry! geq 15 exit /b' + #13#10 +
                         'timeout /t 2 /nobreak >nul' + #13#10 +
