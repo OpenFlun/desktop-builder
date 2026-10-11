@@ -217,7 +217,7 @@ const require = createRequire(import.meta.url), __dirname = path.dirname(fileURL
         if (newItem.submenu) newItem.submenu = processMenu(newItem.submenu);
         if (newItem.click === '__TOGGLE_BROWSER__') newItem.click = openInBrowser;
         else if (typeof newItem.click === 'string' &&
-          /^(async\s+)?(function\s*(\w*\s*)?\(|\(\)\s*=>|async\s*\(\)\s*=>)/.test(newItem.click.trim())) {
+          /^(async\s+)?(function\s*([\p{L}\p{N}_$]*\s*)?\(|\(\)\s*=>|async\s*\(\)\s*=>)/u.test(newItem.click.trim())) {
           try { newItem.click = eval(newItem.click) } catch (_) { }
         }
         return newItem;

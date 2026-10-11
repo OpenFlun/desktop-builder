@@ -16,10 +16,10 @@ export default {
 
 	// node_modules 优化:合并 JS + 清空已复制到项目根的资源 + 清平台二进制 + 清开发文件,加速冷启动
 	// 默认开启。若构建或运行异常,可按下述方式关闭或排除问题包
-    optimize: {
-        enabled: true,                     // 是否启用（默认 true）
-        // exclude: ['包名'],            // 排除的包（默认空）
-    },
+	optimize: {
+		enabled: true,                     // 是否启用（默认 true）
+		// exclude: ['包名'],              // 排除优化时异常或不想优化的包（默认空）
+	},
 	// 窗口配置
 	window: {
 		width: 1200,                      // 默认宽度(px)

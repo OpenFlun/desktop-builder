@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url), subpath = (...parts) => './' + p
     BUNDLED_DIR = '__bundled__', NM_DIR = 'node_modules', PKG_JSON = 'package.json', CUR_PLAT = process.platform,
     CUR_ARCH = process.arch, ENTRY_EXTS = ['.js', '.cjs', '.mjs', '/index.js', '/index.cjs', '/index.mjs'],
     JS_RE = /\.(js|mjs|cjs)$/, DOT_SLASH_RE = /^\.\//, POSIX_RE = /\\/g, PKG_SUBPATH = subpath(PKG_JSON),
-    SCRIPT_FILE_RE = /([\w./\\-]+\.(?:js|cjs|mjs))/, SCRIPT_FILE_RE_G = new RegExp(SCRIPT_FILE_RE.source, 'g'),
+    SCRIPT_FILE_RE = /([\p{L}\p{N}_.\-/\\]+\.(?:js|cjs|mjs))/u, SCRIPT_FILE_RE_G = new RegExp(SCRIPT_FILE_RE.source, 'gu'),
     SNAPSHOT_FILE = '.deps-snapshot.json', SKIP_PKGS = new Set(['esbuild', '@esbuild', 'node-gyp-build',
         'node-gyp-build-optional-packages', 'node-addon-api', 'node']),
     EXCLUDE_NAMES = new Set([PKG_JSON, 'package-lock.json', NM_DIR, '.git', '.gitignore', '.npmignore']),
@@ -252,7 +252,7 @@ const findPackages = dir => {
                                 }
                                 if (end >= 0) {
                                     const block = code.substring(start, end + 1), keys = new Set(),
-                                        re = /\bexports\d*\.([a-zA-Z_$][\w$]*)\s*=/g;
+                                        re = /\bexports\d*\.([\p{ID_Start}$_][\p{ID_Continue}$]*)\s*=/gu;
                                     let mm;
                                     while ((mm = re.exec(block)) !== null) keys.add(mm[1]);
                                     if (keys.size > 0) {
@@ -366,7 +366,7 @@ const findPackages = dir => {
         return m ? m[1] : null;
     },
     extractResources = (pkgDir, scriptCode) => {
-        const strings = new Set(), re = /['"`]([A-Za-z0-9_.\-/\\]{2,100})['"`]/g;
+        const strings = new Set(), re = /['"`]([^\s'"`]{2,})['"`]/g;
         let m;
         while ((m = re.exec(scriptCode)) !== null) strings.add(m[1]);
         const items = [];

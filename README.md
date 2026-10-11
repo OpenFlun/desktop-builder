@@ -56,7 +56,7 @@
 - 📦 **依赖预打包**：构建时自动判断是否安装生产依赖并打包进应用,用户**首次启动无需联网**,开箱即用;
 - 🎨 **主题切换支持**：通过菜单配置轻松切换浅色/深色/跟随系统主题;
 - 🚀 **node_modules 优化系统（默认开启）**：构建时自动执行六阶段优化——**合并 JS**（按入口 bundle，多文件合一）、**清空资源**（postinstall 复制到项目根的目录，保留空目录以通过自检）、**清平台二进制**（按平台+架构逐文件判定，删非本机二进制）、**清开发文件**（`.md` / `.map` / `.d.ts` / `.h` / `.c` 等）、**清中间产物**、**清不参与运行的文件和空目录**；用户无需配置，即可大幅减少打包文件数与体积、加速冷启动；
-- 🧩 **优化的逃生舱口**：若遇异常，可在 `desktopAppConfig.js` 中 `optimize: { enabled: false }` 整体关闭，或 `optimize: { exclude: ["包名"] }` 精确排除；
+- 🧩 **优化的逃生舱口**：若遇异常，可在 `desktopAppConfig.js` 中 `optimize: { enabled: false }` 整体关闭，或 `optimize: { exclude: ["包名"] }` 排除优化时异常或不想优化的包；
 - 🧹 **卸载自动清理**：卸载时自动终止进程、删除应用生成的同名防火墙规则、清空安装目录；可选删除用户数据，并据此保留或清除安装目录记忆（`usePreviousAppDir`）;
 - 🛡️ **可选加入 Windows Defender 排除项（默认勾选）**：安装向导新增「选择附加任务」页，默认勾选「将应用加入 Windows Defender 排除项，加快启动」——排除后应用启动不再被实时扫描，冷启动更快；如不需要可在安装时取消勾选（代价：每次开机首次启动稍慢）；仅 Windows 生效；
 
@@ -181,10 +181,10 @@ await build();
 | `build`               | `object`   | 打包配置（应用标识、输出目录、图标、安装选项、签名等）       | [4. 打包配置](#4-打包配置-build)                |
 | `advanced`            | `object`   | Node.js 子进程启停行为                                       | [5. 高级选项](#5-高级选项-advanced)             |
 | `allowScripts`        | `object`   | 构建阶段放行安装脚本的包名列表                               | [6. 允许安装脚本](#6-允许安装脚本-allowscripts) |
-| `excludeFiles`        | `string[]` | 复制项目文件时排除的文件/目录                                | [7. 排除规则](#7-排除规则)                      |
-| `excludeDependencies` | `string[]` | 从最终依赖列表中移除的 npm 包                                | [7. 排除规则](#7-排除规则)                      |
-| `excludeOutputs`      | `string[]` | 从最终输出目录中排除的文件                                   | [7. 排除规则](#7-排除规则)                      |
-| `optimize`            | `object`   | 优化配置（`enabled` 开关、`exclude` 排除特定包）             | [8. optimize](#8-node_modules-优化-optimize)    |
+| `excludeFiles`        | `string[]` | 复制项目文件时排除的文件/目录                          | [7. 排除规则](#7-排除规则)                         |
+| `excludeDependencies` | `string[]` | 从最终依赖列表中移除的 npm 包                        | [7. 排除规则](#7-排除规则)                         |
+| `excludeOutputs`      | `string[]` | 从最终输出目录中排除的文件                            | [7. 排除规则](#7-排除规则)                         |
+| `optimize`            | `object`   | 优化配置（`enabled` 开关、`exclude` 排除异常或不想优化的包） | [8. optimize](#8-node_modules-优化-optimize) |
 
 `build` 子字段概览：
 
@@ -351,7 +351,7 @@ menu: [
 **优化的开关与逃生舱口**：
 
 - `optimize: { enabled: false }`：整体关闭优化；
-- `optimize: { exclude: ['包名'] }`：精确排除特定包；
+- `optimize: { exclude: ['包名'] }`：排除优化时异常或不想优化的包；
 - 若需额外排除项目文件，仍使用 `excludeFiles`（作用于复制阶段，与优化系统独立）;
 
 > **`electron-builder` 的 `files` 数组**仅排除工具自身生成的 `builder.json` 与用户的 `excludeFiles`；`node_modules` 内部的清理完全交由优化系统处理。因此若设置 `optimize: { enabled: false }`，`node_modules` 将保持原始内容（体积较大）——这是关闭优化换取"完全不动依赖"的代价;
@@ -693,14 +693,14 @@ export default {
   // ===== 关闭优化（构建或运行异常时使用）=====
   // optimize: { enabled: false },
 
-  // ===== 精确排除特定包（某个包合并后运行异常时使用）=====
+  // ===== 排除优化时异常或不想优化的包（默认空）=====
   // optimize: { exclude: ['包名'] },
 };
 ```
 
 - **不配置**：优化系统默认开启;构建时自动执行六阶段优化，大幅减少打包文件数和体积、加速冷启动；
 - **`optimize: { enabled: false }`**：整体关闭优化;用于排查"是否优化系统引起的异常"——若关闭后问题消失，说明是优化系统的某些清理动作引起的；
-- **`optimize: { exclude: ['包名'] }`**：精确排除特定包;用于某个包合并后运行异常时——只跳过该包的优化，其余包继续享受优化;包名写 `package.json` 中的 `name` 字段值（如 `qrcode`、`@flun/html-template`）；
+- **`optimize: { exclude: ['包名'] }`**：排除优化时异常或不想优化的包——只跳过该包的优化，其余包继续享受优化;包名写 `package.json` 中的 `name` 字段值（如 `qrcode`、`@flun/html-template`）；
 - **调试步骤**：
   1. 运行 `npx desktop-builder build --debug` 查看详细日志（优化各阶段明细、electron-builder 完整输出），初步定位问题；
   2. 遇到异常，先 `optimize: { enabled: false }` 快速判断是否为优化引起；
@@ -1057,7 +1057,7 @@ npx electron-builder migrate-schema
 
 1. **查看详细日志**：运行 `npx desktop-builder build --debug`，查看优化各阶段删了哪些文件、为何删（详见 [9. 调试构建](#9-调试构建---debug)），快速定位异常来源；
 2. **整体关闭**：在 `desktopAppConfig.js` 中设置 `optimize: { enabled: false }`，重新构建;若问题消失，说明确实与优化系统有关；
-3. **精确排除**：设为 `optimize: { exclude: ['包名'] }`，只跳过该包;包名写 `package.json` 中 `name` 字段值，可写多个；
+3. **排除异常或不想优化的包**：设为 `optimize: { exclude: ['包名'] }`，只跳过该包;包名写 `package.json` 中 `name` 字段值，可写多个；
 4. **彻底重来**：删除临时目录 `%TEMP%\desktop-builder-build`（Windows，具体路径取决于系统），重新构建会自动完整重装依赖并重新优化;
 
 详细配置见 [8. node_modules 优化](#8-node_modules-优化-optimize);

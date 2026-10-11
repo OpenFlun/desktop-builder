@@ -1,4 +1,20 @@
+import { markVerified, optimizeNodeModules, clearVerified, SELF_HASH } from './optimize-node-modules.js';
 import { runCLI, build } from './build.js';
+
+// =================================== optimize-node-modules.js ===================================
+/**
+ * ```js
+ * // 文件导出内容
+ * markVerified();        // 标记快照 verified=true（构建全流程成功后由 build.js 调用）
+ * optimizeNodeModules(); // 执行 node_modules 六阶段优化
+ * clearVerified();       // 清除快照中的 verified 标记
+ * SELF_HASH;             // 当前优化文件的 SHA256 前 16 位（缓存指纹）
+ * ```
+ * >查看定义:@see {@link markVerified}、{@link optimizeNodeModules}、{@link clearVerified}、{@link SELF_HASH}
+ */
+declare module './optimize-node-modules.js' {
+    export * from './optimize-node-modules.js';
+}
 
 // =================================== build.js ===================================
 /**
