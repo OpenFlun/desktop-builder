@@ -3,20 +3,7 @@ import path from 'path';
 import { createRequire } from 'module';
 import chalk from 'chalk';
 
-const require = createRequire(import.meta.url);
-
-/**
- * 当前优化文件的 SHA256 前 16 位（缓存指纹；优化代码一改，缓存自动失效）
- * >查看定义:@see {@link optimizeNodeModules}
- */
-const SELF_HASH = (() => {
-    try {
-        const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
-        return require('crypto').createHash('sha256').update(src).digest('hex').slice(0, 16);
-    } catch { return 'unknown'; }
-})();
-
-const subpath = (...parts) => './' + path.posix.join(...parts),
+const require = createRequire(import.meta.url), subpath = (...parts) => './' + path.posix.join(...parts),
     BUNDLED_DIR = '__bundled__', NM_DIR = 'node_modules', PKG_JSON = 'package.json', CUR_PLAT = process.platform,
     CUR_ARCH = process.arch, ENTRY_EXTS = ['.js', '.cjs', '.mjs', '/index.js', '/index.cjs', '/index.mjs'],
     JS_RE = /\.(js|mjs|cjs)$/, DOT_SLASH_RE = /^\.\//, POSIX_RE = /\\/g, PKG_SUBPATH = subpath(PKG_JSON),
@@ -47,51 +34,37 @@ const subpath = (...parts) => './' + path.posix.join(...parts),
         const p = path.join(tempDir, SNAPSHOT_FILE);
         if (!await fs.pathExists(p)) return;
         const old = await fs.readJson(p);
-        old.platform = CUR_PLAT, old.arch = CUR_ARCH, old.optimizeHash = SELF_HASH, old.verified = false, old.optimized = true;
-        await fs.writeJson(p, old, { spaces: 2 });
+        old.platform = CUR_PLAT, old.arch = CUR_ARCH, old.optimizeHash = SELF_HASH, old.verified = false;
+        old.optimized = true, await fs.writeJson(p, old, { spaces: 2 });
     };
 
-/**
- * 清除快照中的 verified 标记（优化开始或构建失败时调用）
- * >查看定义:@see {@link markVerified}
- * @param {string} tempDir 临时构建目录
- * @returns {Promise<void>}
- */
-const clearVerified = async tempDir => {
-    const p = path.join(tempDir, SNAPSHOT_FILE);
-    if (!await fs.pathExists(p)) return;
-    try {
-        const old = await fs.readJson(p);
-        if (old.verified !== false) old.verified = false, await fs.writeJson(p, old, { spaces: 2 });
-    } catch { }
-};
 
 // ==================== 扫描工具 ====================
 const findPackages = dir => {
-        const result = [];
-        if (!fs.existsSync(dir)) return result;
-        for (const entry of fs.readdirSync(dir)) {
-            if (entry === '.bin' || entry.startsWith('.')) continue;
-            const full = path.join(dir, entry);
-            if (!fs.statSync(full).isDirectory()) continue;
-            if (entry === NM_DIR) { result.push(...findPackages(full)); continue; }
-            if (entry.startsWith('@')) {
-                for (const sub of fs.readdirSync(full)) {
-                    const pkgDir = path.join(full, sub);
-                    if (fs.statSync(pkgDir).isDirectory()) {
-                        result.push(pkgDir);
-                        const nested = path.join(pkgDir, NM_DIR);
-                        if (fs.existsSync(nested)) result.push(...findPackages(nested));
-                    }
+    const result = [];
+    if (!fs.existsSync(dir)) return result;
+    for (const entry of fs.readdirSync(dir)) {
+        if (entry === '.bin' || entry.startsWith('.')) continue;
+        const full = path.join(dir, entry);
+        if (!fs.statSync(full).isDirectory()) continue;
+        if (entry === NM_DIR) { result.push(...findPackages(full)); continue; }
+        if (entry.startsWith('@')) {
+            for (const sub of fs.readdirSync(full)) {
+                const pkgDir = path.join(full, sub);
+                if (fs.statSync(pkgDir).isDirectory()) {
+                    result.push(pkgDir);
+                    const nested = path.join(pkgDir, NM_DIR);
+                    if (fs.existsSync(nested)) result.push(...findPackages(nested));
                 }
-            } else {
-                result.push(full);
-                const nested = path.join(full, NM_DIR);
-                if (fs.existsSync(nested)) result.push(...findPackages(nested));
             }
+        } else {
+            result.push(full);
+            const nested = path.join(full, NM_DIR);
+            if (fs.existsSync(nested)) result.push(...findPackages(nested));
         }
-        return result;
-    },
+    }
+    return result;
+},
     hasNativeModule = dir => {
         let found = false;
         const walk = d => {
@@ -331,25 +304,24 @@ const findPackages = dir => {
 
             // 删除原 JS
             let deleted = 0;
-            const resItems = resMap ? (resMap.get(pkgDir) || null) : null,
-                resJsHits = resItems ? new Map() : null;
-            const walkDel = d => {
-                for (const f of fs.readdirSync(d, { withFileTypes: true })) {
-                    if (f.isDirectory()) {
-                        if (f.name === NM_DIR || f.name === BUNDLED_DIR) continue;
-                        walkDel(path.join(d, f.name));
-                    } else if (JS_RE.test(f.name)) {
-                        const full = path.join(d, f.name), rel = toPosix(path.relative(pkgDir, full));
-                        if (protectedByScripts.has(rel)) continue;
-                        if (wildcardPrefixes.some(p => rel.startsWith(p))) continue;
-                        if (resItems) {
-                            const top = rel.split('/')[0];
-                            if (resItems.has(top)) resJsHits.set(top, (resJsHits.get(top) || 0) + 1);
+            const resItems = resMap ? (resMap.get(pkgDir) || null) : null, resJsHits = resItems ? new Map() : null,
+                walkDel = d => {
+                    for (const f of fs.readdirSync(d, { withFileTypes: true })) {
+                        if (f.isDirectory()) {
+                            if (f.name === NM_DIR || f.name === BUNDLED_DIR) continue;
+                            walkDel(path.join(d, f.name));
+                        } else if (JS_RE.test(f.name)) {
+                            const full = path.join(d, f.name), rel = toPosix(path.relative(pkgDir, full));
+                            if (protectedByScripts.has(rel)) continue;
+                            if (wildcardPrefixes.some(p => rel.startsWith(p))) continue;
+                            if (resItems) {
+                                const top = rel.split('/')[0];
+                                if (resItems.has(top)) resJsHits.set(top, (resJsHits.get(top) || 0) + 1);
+                            }
+                            fs.unlinkSync(full); deleted++;
                         }
-                        fs.unlinkSync(full); deleted++;
                     }
-                }
-            };
+                };
             walkDel(pkgDir), totalDeleted += deleted, merged++;
             if (resJsHits && resJsHits.size > 0 && resLog)
                 for (const [k, v] of resJsHits) resLog.push(`      ${relName}: ${k} (${v} 个 JS)`);
@@ -451,8 +423,7 @@ const findPackages = dir => {
         let removed = 0;
         const readHead = file => {
             try {
-                const fd = fs.openSync(file, 'r'), buf = Buffer.alloc(512);
-                const n = fs.readSync(fd, buf, 0, 512, 0);
+                const fd = fs.openSync(file, 'r'), buf = Buffer.alloc(512), n = fs.readSync(fd, buf, 0, 512, 0);
                 fs.closeSync(fd);
                 return n > 0 ? buf.slice(0, n) : null;
             } catch { return null; }
@@ -621,7 +592,6 @@ const findPackages = dir => {
     };
 
 // ==================== 导出函数 ====================
-
 /**
  * 标记快照 verified=true（构建全流程成功后由 build.js 调用）
  * >查看定义:@see {@link clearVerified}
@@ -636,7 +606,6 @@ const markVerified = async tempDir => {
         old.verified = true, await fs.writeJson(p, old, { spaces: 2 });
     } catch { }
 };
-
 /**
  * 执行 node_modules 六阶段优化
  * >查看定义:@see {@link SELF_HASH}
@@ -646,58 +615,80 @@ const markVerified = async tempDir => {
  * @returns {Promise<object>} 各阶段统计（merged / cleared / platform / devFiles / intermediates / filesRules）
  */
 const optimizeNodeModules = async (tempDir, config = {}) => {
-        const excludePkgs = new Set(config.exclude || []), nmDir = path.join(tempDir, NM_DIR),
-            snapPath = path.join(tempDir, SNAPSHOT_FILE);
+    const excludePkgs = new Set(config.exclude || []), nmDir = path.join(tempDir, NM_DIR),
+        snapPath = path.join(tempDir, SNAPSHOT_FILE);
 
-        if (!await fs.pathExists(nmDir)) {
-            console.log(chalk.gray('[优化] node_modules 不存在,跳过'));
-            return { skipped: true };
-        }
-        await clearVerified(tempDir);  // 执行优化前清 verified,构建成功后再由 build.js 写回 true
+    if (!await fs.pathExists(nmDir)) {
+        console.log(chalk.gray('[优化] node_modules 不存在,跳过'));
+        return { skipped: true };
+    }
+    await clearVerified(tempDir);  // 执行优化前清 verified,构建成功后再由 build.js 写回 true
+    const t0 = Date.now();
+    try {
+        // 阶段1: 合并
+        console.log(chalk.cyan('  [1/6] 合并 JS...'));
+        const m = await mergeAll(nmDir, excludePkgs);
+        console.log(chalk.green(`    合并 ${m.merged} 包,跳过 ${m.skipped},删 ${m.totalDeleted} 个 JS`));
 
-        const t0 = Date.now();
-        try {
-            // 阶段1: 合并
-            console.log(chalk.cyan('  [1/6] 合并 JS...'));
-            const m = await mergeAll(nmDir, excludePkgs);
-            console.log(chalk.green(`    合并 ${m.merged} 包,跳过 ${m.skipped},删 ${m.totalDeleted} 个 JS`));
+        // 阶段2: 清空资源
+        console.log(chalk.cyan('  [2/6] 清空复制到项目根的资源...'));
+        const c = await clearResources(nmDir, excludePkgs);
+        console.log(chalk.green(`    清空 ${c} 项`));
 
-            // 阶段2: 清空资源
-            console.log(chalk.cyan('  [2/6] 清空复制到项目根的资源...'));
-            const c = await clearResources(nmDir, excludePkgs);
-            console.log(chalk.green(`    清空 ${c} 项`));
+        // 阶段3: 清平台二进制
+        console.log(chalk.cyan('  [3/6] 清理非当前平台二进制...'));
+        const p = await prunePlatform(nmDir);
+        console.log(chalk.green(`    清理 ${p} 项`));
 
-            // 阶段3: 清平台二进制
-            console.log(chalk.cyan('  [3/6] 清理非当前平台二进制...'));
-            const p = await prunePlatform(nmDir);
-            console.log(chalk.green(`    清理 ${p} 项`));
+        // 阶段4: 清开发文件
+        console.log(chalk.cyan('  [4/6] 清理开发文件...'));
+        const d = await pruneDevFiles(nmDir);
+        console.log(chalk.green(`    清理 ${d} 个文件`));
 
-            // 阶段4: 清开发文件
-            console.log(chalk.cyan('  [4/6] 清理开发文件...'));
-            const d = await pruneDevFiles(nmDir);
-            console.log(chalk.green(`    清理 ${d} 个文件`));
+        // 阶段5: 清中间产物
+        console.log(chalk.cyan('  [5/6] 清理中间产物...'));
+        const i = await pruneIntermediates(nmDir);
+        console.log(chalk.green(`    清理 ${i} 个文件`));
 
-            // 阶段5: 清中间产物
-            console.log(chalk.cyan('  [5/6] 清理中间产物...'));
-            const i = await pruneIntermediates(nmDir);
-            console.log(chalk.green(`    清理 ${i} 个文件`));
+        // 阶段6: 清除不参与运行的文件（与 build.js 的 files 数组对齐）
+        console.log(chalk.cyan('  [6/6] 清除不参与运行的文件和空目录...'));
+        const fr = await applyFilesRules(nmDir);
+        console.log(chalk.green(`    清理 ${fr} 项`));
 
-            // 阶段6: 清除不参与运行的文件（与 build.js 的 files 数组对齐）
-            console.log(chalk.cyan('  [6/6] 清除不参与运行的文件和空目录...'));
-            const fr = await applyFilesRules(nmDir);
-            console.log(chalk.green(`    清理 ${fr} 项`));
+        await writeSnapshotFlags(tempDir);   // 写 platform/arch/version,同时 verified=false
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+        console.log(chalk.green(`[信息] 优化完成,耗时 ${elapsed}s`));
 
-            await writeSnapshotFlags(tempDir);   // 写 platform/arch/version,同时 verified=false
-
-            const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-            console.log(chalk.green(`[信息] 优化完成,耗时 ${elapsed}s`));
-
-            return { merged: m.merged, cleared: c, platform: p, devFiles: d, intermediates: i, filesRules: fr };
-        } catch (err) {
-            // 失败时删除依赖快照,下次强制重装 + 重优化
-            try { await fs.remove(snapPath); } catch { }
-            throw err;
-        }
-    };
+        return { merged: m.merged, cleared: c, platform: p, devFiles: d, intermediates: i, filesRules: fr };
+    } catch (err) {
+        // 失败时删除依赖快照,下次强制重装 + 重优化
+        try { await fs.remove(snapPath); } catch { }
+        throw err;
+    }
+};
+/**
+ * 清除快照中的 verified 标记（优化开始或构建失败时调用）
+ * >查看定义:@see {@link markVerified}
+ * @param {string} tempDir 临时构建目录
+ * @returns {Promise<void>}
+ */
+const clearVerified = async tempDir => {
+    const p = path.join(tempDir, SNAPSHOT_FILE);
+    if (!await fs.pathExists(p)) return;
+    try {
+        const old = await fs.readJson(p);
+        if (old.verified !== false) old.verified = false, await fs.writeJson(p, old, { spaces: 2 });
+    } catch { }
+};
+/**
+ * 当前优化文件的 SHA256 前 16 位（缓存指纹:优化代码一改,缓存自动失效）
+ * >查看定义:@see {@link optimizeNodeModules}
+ */
+const SELF_HASH = (() => {
+    try {
+        const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
+        return require('crypto').createHash('sha256').update(src).digest('hex').slice(0, 16);
+    } catch { return 'unknown'; }
+})();
 
 export { markVerified, optimizeNodeModules, clearVerified, SELF_HASH };

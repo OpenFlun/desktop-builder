@@ -11,6 +11,10 @@ import { markVerified, optimizeNodeModules, clearVerified, SELF_HASH } from './o
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = createRequire(import.meta.url),
     CACHE_DIR = path.join(os.homedir(), '.electron-builder-cache'),
+    /** 当前平台（process.platform 的短别名） */
+    CUR_PLAT = process.platform,
+    /** 当前架构（process.arch 的短别名） */
+    CUR_ARCH = process.arch,
     /**
      * 判断是否为非空普通对象(排除 null/数组/字符串等)
      * @param {*} v 待判断的值
@@ -76,8 +80,12 @@ const build = async () => {
             advanced: userAdvanced = {}, build: buildConfig = {}, optimize: optimizeCfg
         } = configModule.default;
     if (!serverPath || !appUrl) console.error(chalk.red('[错误] 配置文件缺少必填字段: serverPath, appUrl')), process.exit(1);
-    // 早期配置校验(避免用户等待后才发现配置错误)
-    if (process.platform === 'win32') {
+    // 早期配置校验
+    if (optimizeCfg !== undefined && (optimizeCfg === null || typeof optimizeCfg !== "object")) {
+        console.error(chalk.red("[错误] optimize 需为对象,如 { enabled: false } 关闭优化,{ exclude: [\"包名\"] } 排除问题包"));
+        process.exit(1);
+    }
+    if (CUR_PLAT === 'win32') {
         const winSign = buildConfig.win?.sign;
         if (winSign) {
             if (!winSign.type) {
@@ -111,7 +119,7 @@ const build = async () => {
         }
     }
     // macOS 早期配置校验(与 Windows 对齐,避免走到打包阶段才报错)
-    if (process.platform === 'darwin') {
+    if (CUR_PLAT === 'darwin') {
         const macCfg = buildConfig.mac || {}, macSign = macCfg.sign;
         if (macSign && macSign.certificateFile) await resolveCertFile(macSign.certificateFile);
         if (macCfg.notarize !== undefined && typeof macCfg.notarize !== 'boolean')
@@ -136,7 +144,7 @@ const build = async () => {
         }
     }
     // Linux 早期配置校验
-    if (process.platform === 'linux') {
+    if (CUR_PLAT === 'linux') {
         const linuxSign = buildConfig.linux?.sign;
         if (linuxSign) {
             const hasKey = !!linuxSign.gpgPrivateKey, hasPass = !!linuxSign.gpgKeyPassphrase;
@@ -220,23 +228,15 @@ const build = async () => {
     }, {}), extraFields = ['engines', 'overrides', 'resolutions'].reduce((acc, key) => {
         if (pkgJson[key]) acc[key] = pkgJson[key];
         return acc;
-    }, {}), snapshotData = { deps: sortedDeps, extra: extraFields }, snapshotPath = path.join(tempDir, snapshotFile);
-
-    // 本次是否开启优化
-    if (optimizeCfg !== undefined && (optimizeCfg === null || typeof optimizeCfg !== "object"))
-        console.error(chalk.red("[错误] optimize 需为对象,如 { enabled: false } 关闭优化,{ exclude: [\"包名\"] } 排除问题包")), process.exit(1);
-    const thisOptimize = optimizeCfg === undefined || optimizeCfg.enabled !== false;
-
+    }, {}), snapshotData = { deps: sortedDeps, extra: extraFields }, snapshotPath = path.join(tempDir, snapshotFile),
+        thisOptimize = optimizeCfg === undefined || optimizeCfg.enabled !== false;
     // 判断:是否重装 / 是否优化
     let shouldInstall = true, shouldOptimize = thisOptimize, reasons = [];
     if (await fs.pathExists(snapshotPath)) {
         const old = await fs.readJson(snapshotPath),
-            depsSame = JSON.stringify(old.deps) === JSON.stringify(snapshotData.deps)
-                && JSON.stringify(old.extra) === JSON.stringify(snapshotData.extra),
-            verifiedOk = old.verified === true,
-            envSame = old.platform === process.platform && old.arch === process.arch,
-            lastOptimized = old.optimized !== false,
-            selfHashSame = old.optimizeHash === SELF_HASH,
+            depsSame = JSON.stringify({ deps: old.deps, extra: old.extra }) === JSON.stringify(snapshotData),
+            verifiedOk = old.verified === true, envSame = old.platform === CUR_PLAT && old.arch === CUR_ARCH,
+            lastOptimized = old.optimized !== false, selfHashSame = old.optimizeHash === SELF_HASH,
             nmExists = await fs.pathExists(path.join(tempDir, 'node_modules'));
         if (!depsSame) reasons.push('依赖清单已变化');
         if (!verifiedOk) reasons.push('上次构建未完成');
@@ -247,16 +247,15 @@ const build = async () => {
         if (reasons.length > 0) {
             shouldInstall = true, shouldOptimize = thisOptimize;
             console.log(chalk.gray('[信息] 需要重新安装依赖(原因: ' + reasons.join(', ') + ')'));
-        } else if (thisOptimize && !lastOptimized) {
-            shouldInstall = false, shouldOptimize = true;
-            console.log(chalk.gray('[信息] 依赖与环境未变化,仅需优化'));
-        } else {
+        }
+        else if (thisOptimize && !lastOptimized)
+            shouldInstall = false, shouldOptimize = true, console.log(chalk.gray('[信息] 依赖与环境未变化,仅需优化'));
+        else {
             shouldInstall = false, shouldOptimize = false;
             console.log(chalk.gray('[信息] 依赖与环境未变化,跳过安装与优化')), await clearVerified(tempDir);
         }
-    } else {
-        console.log(chalk.gray('[信息] 需要重新安装依赖(原因: 缓存快照缺失)'));
     }
+    else console.log(chalk.gray('[信息] 需要重新安装依赖(原因: 缓存快照缺失)'));
 
     if (shouldInstall) {
         console.log(chalk.cyan('[信息] 正在安装依赖...')), await fs.remove(path.join(tempDir, 'node_modules'));
@@ -266,9 +265,7 @@ const build = async () => {
             cwd: tempDir, stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' }
         });
         await fs.writeJson(snapshotPath, {
-            ...snapshotData, optimized: false,
-            platform: process.platform, arch: process.arch,
-            optimizeHash: SELF_HASH, verified: false
+            ...snapshotData, optimized: false, platform: CUR_PLAT, arch: CUR_ARCH, optimizeHash: SELF_HASH, verified: false
         }, { spaces: 2 });
         console.log(chalk.cyan('[信息] 依赖安装完成'));
     }
@@ -281,11 +278,9 @@ const build = async () => {
         } catch (err) {
             console.error(chalk.red("[错误] node_modules 优化失败：" + err.message));
             console.error(chalk.yellow("[提示] 可在 desktopAppConfig.js 中设置 optimize: { enabled: false } 关闭优化,"));
-            console.error(chalk.yellow("       或用 optimize: { exclude: [\"包名\"] } 排除问题包。"));
-            process.exit(1);
+            console.error(chalk.yellow("       或用 optimize: { exclude: [\"包名\"] } 排除问题包。")), process.exit(1);
         }
     }
-    // ==== 优化结束 ====
     // 更新 allowScripts
     if (await fs.pathExists(rootPkgPath)) {
         try {
@@ -318,7 +313,7 @@ const build = async () => {
         };
     configObj.directories = { ...(configObj.directories || {}), output };
     // 平台特定配置（映射处理）
-    const platform = process.platform,
+    const platform = CUR_PLAT,
         platformHandlers = {
             win32: (cfg, userWinCfg) => {
                 cfg.win ??= {};
@@ -424,7 +419,8 @@ const build = async () => {
         if (!process.env.OPTIMIZE_DEBUG && ebOutput.length > 0) console.error(chalk.gray(ebOutput.join('\n')));
         console.error(chalk.red('[错误] 生成可执行文件失败:'), lastError);
         const missingDeps = Object.keys(snapshotData.deps || {}).filter(d => !fs.existsSync(path.join(tempDir, 'node_modules', d)));
-        if (missingDeps.length > 0) console.error(chalk.yellow('[提示] 依赖文件缺失: ' + missingDeps.join(', ') + ',再次运行构建命令即可自动重装修复'));
+        if (missingDeps.length > 0)
+            console.error(chalk.yellow('[提示] 依赖文件缺失: ' + missingDeps.join(', ') + ',再次运行构建命令即可自动重装修复'));
         process.exit(1);
     }
 
@@ -604,7 +600,7 @@ const build = async () => {
             return sections.join('\n\n');
         },
         ensureInnoSetup = async () => {
-            const innoDirName = process.arch === 'x64' ? 'inno-setup-x64' : 'inno-setup-x86',
+            const innoDirName = CUR_ARCH === 'x64' ? 'inno-setup-x64' : 'inno-setup-x86',
                 cacheDir = path.join(CACHE_DIR, innoDirName),
                 [isccExe, versionFile] = ['ISCC.exe', 'version.txt'].map(f => path.join(cacheDir, f)),
                 cacheComplete = await fs.pathExists(isccExe) && await fs.pathExists(versionFile);
@@ -698,10 +694,9 @@ const build = async () => {
         } = innoConfig;
 
         // 签名配置规范化(校验已在 build 开头完成,此处仅做拼接)
-        let signingToolName = '', signingToolPath = '', signToolParams = innoConfig.signToolParams;
-        if (innoConfig.signingTool) {
-            signingToolPath = await resolveSignTool(innoConfig.signingTool);
-            signingToolName = path.basename(signingToolPath);
+        let signingToolName = '', signingToolPath = '', signToolParams = _stp;
+        if (_st) {
+            signingToolPath = await resolveSignTool(_st), signingToolName = path.basename(signingToolPath);
             const { certificateFile, certificatePassword = '', algorithm = 'sha256' } = signToolParams,
                 certAbs = await resolveCertFile(certificateFile);
             signToolParams = `sign /f "${certAbs}" /p "${certificatePassword}" /fd ${algorithm} $f`;
