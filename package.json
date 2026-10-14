@@ -65,5 +65,10 @@
   "engines": {
     "node": ">=22.12.0",
     "npm": ">=10.0.0"
+  },
+  "electronNodeFallback": {
+    "version": "24",
+    "queryUrl": "https://releases.electronjs.org/schedule",
+    "note": "升级后访问 queryUrl 获取 node 版本，然后同步 optimize-node-modules.js 的 getElectronNodeMajor 返回值"
   }
 }

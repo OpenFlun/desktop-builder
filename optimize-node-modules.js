@@ -1,13 +1,15 @@
 import fs from 'fs-extra';
 import path from 'path';
+import os from 'os';
 import { createRequire } from 'module';
+import { execSync } from 'child_process';
 import chalk from 'chalk';
 
 const require = createRequire(import.meta.url), subpath = (...parts) => './' + path.posix.join(...parts),
-    BUNDLED_DIR = '__bundled__', NM_DIR = 'node_modules', PKG_JSON = 'package.json', CUR_PLAT = process.platform,
+    BUNDLED_DIR = 'bundled', NM_DIR = 'node_modules', PKG_JSON = 'package.json', CUR_PLAT = process.platform,
     CUR_ARCH = process.arch, ENTRY_EXTS = ['.js', '.cjs', '.mjs', '/index.js', '/index.cjs', '/index.mjs'],
     JS_RE = /\.(js|mjs|cjs)$/, DOT_SLASH_RE = /^\.\//, POSIX_RE = /\\/g, PKG_SUBPATH = subpath(PKG_JSON),
-    SCRIPT_FILE_RE = /([\p{L}\p{N}_.\-/\\]+\.(?:js|cjs|mjs))/u, SCRIPT_FILE_RE_G = new RegExp(SCRIPT_FILE_RE.source, 'gu'),
+    SCRIPT_FILE_RE = /([\p{L}\p{N}_.\-/\\]+\.(?:js|cjs|mjs))/u,
     SNAPSHOT_FILE = '.deps-snapshot.json', SKIP_PKGS = new Set(['esbuild', '@esbuild', 'node-gyp-build',
         'node-gyp-build-optional-packages', 'node-addon-api', 'node']),
     EXCLUDE_NAMES = new Set([PKG_JSON, 'package-lock.json', NM_DIR, '.git', '.gitignore', '.npmignore']),
@@ -28,6 +30,57 @@ const require = createRequire(import.meta.url), subpath = (...parts) => './' + p
             }
         }
         return null;
+    },
+    /** 定位 Electron 缓存目录（与 @electron/get 一致） */
+    getElectronCacheDir = () => {
+        if (CUR_PLAT === 'win32')
+            return path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'electron', 'Cache');
+        if (CUR_PLAT === 'darwin')
+            return path.join(os.homedir(), 'Library', 'Caches', 'electron');
+        return path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'electron');
+    },
+    /** 递归查找指定文件名，返回首个命中的绝对路径 */
+    findFileRecursive = (dir, fileName) => {
+        let found = null;
+        const walk = d => {
+            if (found) return;
+            let entries;
+            try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+            for (const e of entries) {
+                if (found) return;
+                const full = path.join(d, e.name);
+                if (e.isDirectory()) walk(full);
+                else if (e.name === fileName) { found = full; return; }
+            }
+        };
+        walk(dir);
+        return found;
+    },
+    /**
+     * 读取 Electron 内置 Node 主版本号（用于 esbuild target）
+     * 从 Electron 缓存目录中已解压的二进制读取（ELECTRON_RUN_AS_NODE）；
+     * 未解压或读取失败时，暂用 24 兜底（对应 Electron 44 内置版本）
+     */
+    getElectronNodeMajor = () => {
+        try {
+            const cacheDir = getElectronCacheDir();
+            if (fs.existsSync(cacheDir)) {
+                const electronVersion = require('electron/package.json').version,
+                    zipName = `electron-v${electronVersion}-${CUR_PLAT}-${CUR_ARCH}.zip`,
+                    zipPath = findFileRecursive(cacheDir, zipName);
+                if (zipPath) {
+                    const unzipDir = zipPath.slice(0, -4),
+                        exeRel = { win32: 'electron.exe', darwin: 'Electron.app/Contents/MacOS/Electron', linux: 'electron' }[CUR_PLAT],
+                        exe = exeRel ? path.join(unzipDir, exeRel) : null;
+                    if (exe && fs.existsSync(exe)) {
+                        const out = execSync(`"${exe}" -p "process.versions.node"`, { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8' }).trim();
+                        return out.split('.')[0];
+                    }
+                }
+            }
+        } catch { }
+        console.log(chalk.yellow('[提示] 未找到 Electron 已解压二进制，暂用 v24 优化'));
+        return '24';
     },
     // ==================== 快照 ====================
     writeSnapshotFlags = async tempDir => {
@@ -71,7 +124,7 @@ const findPackages = dir => {
             if (found) return;
             for (const f of fs.readdirSync(d, { withFileTypes: true })) {
                 if (f.isDirectory()) walk(path.join(d, f.name));
-                else if (f.name.endsWith('.node')) { found = true; return; }
+                else if (f.name.endsWith('.node') || f.name === 'binding.gyp') { found = true; return; }
             }
         };
         try { walk(dir); } catch { }
@@ -161,7 +214,7 @@ const findPackages = dir => {
         try { esbuild = require('esbuild'); }
         catch { throw new Error('esbuild 未找到,请确认 @flun/desktop-builder 依赖已安装'); }
 
-        const packages = findPackages(nmDir);
+        const packages = findPackages(nmDir), nodeMajor = getElectronNodeMajor();
         let merged = 0, skipped = 0, totalDeleted = 0;
         // 调试模式:预扫各包的 postinstall 资源目录,用于统计被阶段1 删除的资源 JS
         let resMap = null, resLog = null;
@@ -219,7 +272,7 @@ const findPackages = dir => {
                         bundle: true,
                         platform: 'node',
                         format: isESM ? 'esm' : 'cjs',
-                        target: 'node22',
+                        target: 'node' + nodeMajor,
                         outfile: outFile,
                         packages: 'external',
                         banner: isESM ? { js: banner } : undefined,
@@ -281,15 +334,6 @@ const findPackages = dir => {
             if (j.exports && j.exports[PKG_SUBPATH]) newExports[PKG_SUBPATH] = j.exports[PKG_SUBPATH];
 
             fs.writeFileSync(pj + '.orig', JSON.stringify(j));
-            // scripts 引用保护
-            const protectedByScripts = new Set();
-            if (j.scripts) {
-                for (const v of Object.values(j.scripts)) {
-                    const re = SCRIPT_FILE_RE_G;
-                    let m;
-                    while ((m = re.exec(v)) !== null) protectedByScripts.add(toPosix(path.normalize(m[1])));
-                }
-            }
 
             // 通配符覆盖路径保护
             const wildcardPrefixes = parse.wildcards.map(w => w.replace(DOT_SLASH_RE, '').replace(/\/\*.*$/, '/'))
@@ -312,7 +356,6 @@ const findPackages = dir => {
                             walkDel(path.join(d, f.name));
                         } else if (JS_RE.test(f.name)) {
                             const full = path.join(d, f.name), rel = toPosix(path.relative(pkgDir, full));
-                            if (protectedByScripts.has(rel)) continue;
                             if (wildcardPrefixes.some(p => rel.startsWith(p))) continue;
                             if (resItems) {
                                 const top = rel.split('/')[0];
@@ -329,7 +372,7 @@ const findPackages = dir => {
         }
 
         if (resLog && resLog.length > 0) {
-            console.log(chalk.gray('  处理 JS 资源(用到则合并,未用到则提前清除):'));
+        console.log(chalk.gray('  处理保留的资源 JS（被引用则合并，否则删除）:'));
             for (const line of resLog) console.log(chalk.gray(line));
         }
         return { merged, skipped, totalDeleted };
@@ -378,20 +421,20 @@ const findPackages = dir => {
         return [...new Set(items)];
     },
     clearItem = (p, refs) => {
+        let n = 0;
         const st = fs.statSync(p);
         if (st.isDirectory()) {
             for (const f of fs.readdirSync(p)) {
                 const full = path.join(p, f), sub = fs.statSync(full);
-                if (sub.isDirectory()) clearItem(full, refs);
-                else {
-                    if (refs.has(full)) continue;
-                    fs.rmSync(full, { force: true });
+                if (sub.isDirectory()) n += clearItem(full, refs);
+                else if (!JS_RE.test(f) && !refs.has(full)) {
+                    try { fs.rmSync(full, { force: true }); n++; } catch { }
                 }
             }
-        } else {
-            if (refs.has(p)) return;
-            fs.writeFileSync(p, '');
+        } else if (!JS_RE.test(path.basename(p)) && !refs.has(p)) {
+            fs.writeFileSync(p, ''); n++;
         }
+        return n;
     },
     clearResources = async (nmDir, excludePkgs) => {
         const refs = collectReferencedFiles(nmDir);
@@ -411,8 +454,10 @@ const findPackages = dir => {
                 const scriptAbs = path.resolve(pkgDir, scriptRel);
                 if (!fs.existsSync(scriptAbs)) continue;
                 const code = fs.readFileSync(scriptAbs, 'utf8'), items = extractResources(pkgDir, code);
-                for (const item of items)
-                    try { clearItem(path.join(pkgDir, item), refs), cleared++, pkgItems.push(item); } catch { }
+                for (const item of items) {
+                    const cnt = clearItem(path.join(pkgDir, item), refs);
+                    if (cnt > 0) cleared += cnt, pkgItems.push(`${item}(${cnt})`);
+                }
             }
             if (process.env.OPTIMIZE_DEBUG && pkgItems.length > 0) console.log(chalk.gray(`  ✓ ${pkgRel}: ${pkgItems.join(', ')}`));
         }
@@ -498,7 +543,7 @@ const findPackages = dir => {
         return removed;
     },
     // ==================== 清开发文件 ====================
-    pruneDevFiles = async nmDir => {
+    pruneDevFiles = async (nmDir, nativePkgs = [], npmRebuild = false) => {
         let deleted = 0;
         const PATTERNS = [
             /(^|\/)tsconfig\.json$/,
@@ -509,7 +554,10 @@ const findPackages = dir => {
             /\.d\.ts$/, /\.map$/, /metafile-.*\.json$/,
             /(^|\/)\.eslintrc(\.(json|yml|js|cjs))?$/, /(^|\/)\.babelrc(\.(json|js))?$/,
             /(^|\/)package-lock\.json$/, /(^|\/)\.package-lock\.json$/, /(^|\/)yarn\.lock$/,
+            /(^|\/)package-support\.json$/,
         ], DIR_SKIP = new Set([BUNDLED_DIR]),
+            COMPILE_EXTS = /\.(gyp|gypi|h|hh|hpp|c|cc|cpp|cxx|m|mm)$/i,
+            inNativePkg = p => nativePkgs.some(nd => p.startsWith(nd + path.sep)),
             walk = d => {
                 for (const f of fs.readdirSync(d, { withFileTypes: true })) {
                     const full = path.join(d, f.name);
@@ -522,7 +570,8 @@ const findPackages = dir => {
                         walk(full);
                     } else {
                         const rel = toPosix(path.relative(nmDir, full));
-                        if (PATTERNS.some(re => re.test(rel))) try { fs.unlinkSync(full), deleted++; } catch { }
+                        if (PATTERNS.some(re => re.test(rel)) && !(npmRebuild && COMPILE_EXTS.test(f.name) && inNativePkg(full)))
+                            try { fs.unlinkSync(full), deleted++; } catch { }
                     }
                 }
             };
@@ -612,11 +661,12 @@ const markVerified = async tempDir => {
  * @param {string} tempDir 临时构建目录
  * @param {object} [config] 优化配置
  * @param {string[]} [config.exclude] 排除的包名列表
+ * @param {boolean} [config.npmRebuild] 用户是否开启原生模块重编译（为真时保留编译必需文件）
  * @returns {Promise<object>} 各阶段统计（merged / cleared / platform / devFiles / intermediates / filesRules）
  */
 const optimizeNodeModules = async (tempDir, config = {}) => {
     const excludePkgs = new Set(config.exclude || []), nmDir = path.join(tempDir, NM_DIR),
-        snapPath = path.join(tempDir, SNAPSHOT_FILE);
+        snapPath = path.join(tempDir, SNAPSHOT_FILE), npmRebuild = config.npmRebuild === true;
 
     if (!await fs.pathExists(nmDir)) {
         console.log(chalk.gray('[优化] node_modules 不存在,跳过'));
@@ -625,15 +675,16 @@ const optimizeNodeModules = async (tempDir, config = {}) => {
     await clearVerified(tempDir);  // 执行优化前清 verified,构建成功后再由 build.js 写回 true
     const t0 = Date.now();
     try {
-        // 阶段1: 合并
-        console.log(chalk.cyan('  [1/6] 合并 JS...'));
+        const nativePkgs = npmRebuild ? findPackages(nmDir).filter(p => fs.existsSync(path.join(p, 'binding.gyp'))) : [];
+        // 阶段1: 清空资源（跳过 js，留待合并阶段处理）
+        console.log(chalk.cyan('  [1/6] 清空复制到项目根的资源...'));
+        const c = await clearResources(nmDir, excludePkgs);
+        console.log(chalk.green(`    清空 ${c} 个文件（js 文件保留，留待合并阶段处理）`));
+
+        // 阶段2: 合并
+        console.log(chalk.cyan('  [2/6] 合并 JS...'));
         const m = await mergeAll(nmDir, excludePkgs);
         console.log(chalk.green(`    合并 ${m.merged} 包,跳过 ${m.skipped},删 ${m.totalDeleted} 个 JS`));
-
-        // 阶段2: 清空资源
-        console.log(chalk.cyan('  [2/6] 清空复制到项目根的资源...'));
-        const c = await clearResources(nmDir, excludePkgs);
-        console.log(chalk.green(`    清空 ${c} 项`));
 
         // 阶段3: 清平台二进制
         console.log(chalk.cyan('  [3/6] 清理非当前平台二进制...'));
@@ -642,7 +693,7 @@ const optimizeNodeModules = async (tempDir, config = {}) => {
 
         // 阶段4: 清开发文件
         console.log(chalk.cyan('  [4/6] 清理开发文件...'));
-        const d = await pruneDevFiles(nmDir);
+        const d = await pruneDevFiles(nmDir, nativePkgs, npmRebuild);
         console.log(chalk.green(`    清理 ${d} 个文件`));
 
         // 阶段5: 清中间产物

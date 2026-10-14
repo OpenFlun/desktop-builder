@@ -62,6 +62,96 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
         if (!(await fs.pathExists(absPath)))
             console.error(chalk.red('[' + '错误' + '] 证书文件不存在: ' + absPath)), process.exit(1);
         return absPath;
+    },
+    /** 定位 Electron 缓存目录（与 @electron/get 一致） */
+    getElectronCacheDir = () => {
+        if (CUR_PLAT === 'win32')
+            return path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'electron', 'Cache');
+        if (CUR_PLAT === 'darwin')
+            return path.join(os.homedir(), 'Library', 'Caches', 'electron');
+        return path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'electron');
+    },
+    /** 递归查找指定文件名，返回首个命中的绝对路径 */
+    findFileRecursive = (dir, fileName) => {
+        let found = null;
+        const walk = d => {
+            if (found) return;
+            let entries;
+            try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+            for (const e of entries) {
+                if (found) return;
+                const full = path.join(d, e.name);
+                if (e.isDirectory()) walk(full);
+                else if (e.name === fileName) { found = full; return; }
+            }
+        };
+        walk(dir);
+        return found;
+    },
+    /**
+     * 清理 Electron 缓存：只保留当前版本+平台的 zip 及其同名解压目录，其余（其它版本、其它平台）一律删除
+     * @param {string} cacheDir Electron 缓存根目录
+     * @param {string} keepZip 保留的 zip 文件名（如 electron-v44.5.1-win32-x64.zip）
+     * @returns {number} 清理的条目数
+     */
+    cleanupElectronCache = (cacheDir, keepZip) => {
+        const keepDir = keepZip.replace(/\.zip$/i, ''), toDel = [];
+        const walk = d => {
+            let entries;
+            try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+            for (const e of entries) {
+                const full = path.join(d, e.name);
+                if (e.isDirectory()) {
+                    if (/^electron-v/i.test(e.name) && e.name !== keepDir) toDel.push({ p: full, dir: true });
+                    else if (e.name !== keepDir) walk(full);
+                } else if (/^electron-v.*\.zip$/i.test(e.name) && e.name !== keepZip) {
+                    toDel.push({ p: full, dir: false });
+                }
+            }
+        };
+        walk(cacheDir);
+        let n = 0;
+        for (const { p, dir } of toDel) {
+            try { dir ? fs.rmSync(p, { recursive: true, force: true }) : fs.unlinkSync(p); n++; } catch { }
+        }
+        try {
+            for (const e of fs.readdirSync(cacheDir, { withFileTypes: true })) {
+                if (!e.isDirectory()) continue;
+                const full = path.join(cacheDir, e.name);
+                try { if (fs.readdirSync(full).length === 0) fs.rmdirSync(full); } catch { }
+            }
+        } catch { }
+        return n;
+    },
+    /**
+     * 确保 Electron 已解压：缓存中有当前版本的 zip 时，解压到 zip 同名目录（去 .zip 后缀）；已解压则复用
+     * @param {string} electronVersion Electron 版本号
+     * @returns {Promise<string|null>} 已解压目录的绝对路径；无 zip 或失败返回 null
+     */
+    ensureElectronUnpacked = async electronVersion => {
+        try {
+            const cacheDir = getElectronCacheDir();
+            if (!(await fs.pathExists(cacheDir))) return null;
+            const zipName = `electron-v${electronVersion}-${CUR_PLAT}-${CUR_ARCH}.zip`,
+                zipPath = findFileRecursive(cacheDir, zipName);
+            if (!zipPath) return null;
+            const unzipDir = zipPath.replace(/\.zip$/i, ''),
+                exeRel = { win32: 'electron.exe', darwin: 'Electron.app/Contents/MacOS/Electron', linux: 'electron' }[CUR_PLAT];
+            let ready = exeRel && (await fs.pathExists(path.join(unzipDir, exeRel)));
+            if (!ready) {
+                console.log(chalk.gray('[信息] 正在解压 Electron 到缓存目录（首次，之后复用）...'));
+                new AdmZip(zipPath).extractAllTo(unzipDir, true);
+                ready = exeRel && (await fs.pathExists(path.join(unzipDir, exeRel)));
+            }
+            if (ready) {
+                const n = cleanupElectronCache(cacheDir, zipName);
+                if (n > 0) console.log(chalk.gray(`[信息] 已清理 ${n} 个非当前版本的 Electron 缓存`));
+                return unzipDir;
+            }
+        } catch (err) {
+            console.warn(chalk.yellow('[警告] Electron 解压失败，将走默认流程: ' + err.message));
+        }
+        return null;
     };
 /**
  * 构建桌面应用程序(跨平台)
@@ -270,11 +360,22 @@ const build = async () => {
         console.log(chalk.cyan('[信息] 依赖安装完成'));
     }
 
+    // 获取 electron 版本
+    let electronVersion;
+    try {
+        const ePkg = await fs.readJson(require.resolve('electron/package.json'));
+        electronVersion = ePkg.version, console.log(chalk.cyan('[信息] Electron 版本: ' + electronVersion));
+    } catch (err) {
+        console.error(chalk.red('[错误] 未找到 electron 包,请先安装;')), process.exit(1);
+    }
+    // 确保 Electron 已解压到缓存目录（优化器读取、electron-builder 复用）
+    const electronDist = await ensureElectronUnpacked(electronVersion);
+
     // ==== node_modules 优化 ====
     if (shouldOptimize) {
         console.log(chalk.cyan('[信息] 正在执行优化...'));
         try {
-            await optimizeNodeModules(tempDir, optimizeCfg || {});
+            await optimizeNodeModules(tempDir, { ...(optimizeCfg || {}), npmRebuild: buildConfig.nativeModules?.npmRebuild === true });
         } catch (err) {
             console.error(chalk.red("[错误] node_modules 优化失败：" + err.message));
             console.error(chalk.yellow("[提示] 可在 desktopAppConfig.js 中设置 optimize: { enabled: false } 关闭优化,"));
@@ -290,14 +391,6 @@ const build = async () => {
             console.warn(chalk.yellow('[警告] 更新 allowScripts 失败: ' + err.message));
         }
     }
-    // 获取 electron 版本
-    let electronVersion;
-    try {
-        const ePkg = await fs.readJson(require.resolve('electron/package.json'));
-        electronVersion = ePkg.version, console.log(chalk.cyan('[信息] Electron 版本: ' + electronVersion));
-    } catch (err) {
-        console.error(chalk.red('[错误] 未找到 electron 包,请先安装;')), process.exit(1);
-    }
     // 构建 configObj
     const {
         outputDir = './dist', inno: innoConfig = {}, appId = 'com.example.app', publisher: userPublisher,
@@ -309,6 +402,7 @@ const build = async () => {
     }),
         files = ["**/*", "!builder.json", ...userExcludePatterns], output = path.join(tempDir, 'app'), configObj = {
             files, asar: false, nativeModules: { npmRebuild: false }, electronVersion, appId,
+            ...(electronDist ? { electronDist } : {}),
             productName: appName, ...restBuild
         };
     configObj.directories = { ...(configObj.directories || {}), output };
@@ -401,6 +495,7 @@ const build = async () => {
                         ELECTRON_BUILDER_BINARIES_MIRROR: 'https://registry.npmmirror.com/-/binary/electron-builder-binaries/',
                         ELECTRON_BUILDER_CACHE: CACHE_DIR,
                         CSC_IDENTITY_AUTO_DISCOVERY: 'false',
+                        ...(CUR_PLAT !== 'win32' ? { USE_HARD_LINKS: 'true' } : {}),
                         ...envExtra
                     }
                 }

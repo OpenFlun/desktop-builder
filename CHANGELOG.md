@@ -1,4 +1,24 @@
 # 变更日志
+
+## [6.2.0] - 2026-10-14 22:34
+### 新增
+- **Electron 缓存复用**：构建时检查 Electron 缓存目录（`%LOCALAPPDATA%\electron\Cache` 等）——
+  - 已有当前版本（版本 + 平台 + 架构）的解压产物 → 直接复用，不再每次解压；
+  - 无解压产物但有 zip → 从 zip 解压到 zip 同名目录；
+  - zip 也缺 → 交由 electron-builder 下载；
+  - 解压产物通过 `electronDist` 传给 electron-builder，跳过其默认的重复解压；
+  - macOS / Linux 下设置 `USE_HARD_LINKS=true`，electron-builder 用硬链接复制，接近零成本；
+- **自动清理旧缓存**：构建时保留当前版本的 zip 与解压目录，删除其它所有版本 / 平台的 `electron-v*.zip` 及其同名解压目录，避免缓存无限累积（实测一次清理 21 项、约 2.6GB）；
+- **`electronNodeFallback` 配置字段**（`package.json`）：记录 Electron 内置 Node 版本兜底值与查询地址（`https://releases.electronjs.org/schedule`），便于升级 electron 后同步更新；
+- **esbuild target 兜底值升至 24**：读不到 Electron 已解压二进制时，从 v22 兜底改为 v24（对应 Electron 44 内置 Node 24.21.0）。
+
+### 修复
+- **阶段 1、2 顺序调换（重要）**：原「先合并 JS、后清空资源」——合并阶段会删除 postinstall 脚本文件，导致清空阶段读不到脚本、无法提取资源目录，报「清空 0 项」、资源目录残留；现改为**先清空资源、后合并**：
+  - 清空资源时**跳过 js 文件**，留待合并阶段处理；
+  - 日志如实反映：「清空 N 个文件（js 文件保留，留待合并阶段处理）」；
+- **`clearItem` 单文件分支漏判 js（重要）**：目录分支已有「跳过 js」判断，单文件分支遗漏，导致资源目录中的**单个 js 文件**（如 `DnsAutoSSL.js`、`Mail.js`）被清空为 0 字节，合并阶段读到空文件、产物损坏；现补充 js 判断，js 一律保留给合并阶段；
+- **合并阶段日志标题**：由「处理 JS 资源(用到则合并,未用到则提前清除)」改为「处理保留的资源 JS（被引用则合并，否则删除）」，与新流程呼应。
+
 ## [6.1.0] - 2026-10-11 21:34
 ### 新增
 - **安装时可选加入 Windows Defender 排除项（默认勾选）**：安装向导新增「选择附加任务」页，复选框「将应用加入 Windows Defender 排除项，加快启动」默认勾选；
