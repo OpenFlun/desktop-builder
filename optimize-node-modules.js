@@ -75,8 +75,7 @@ const findFileRecursive = (dir, fileName) => {
 const getElectronCacheDir = () => {
     if (CUR_PLAT === 'win32')
         return path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'electron', 'Cache');
-    if (CUR_PLAT === 'darwin')
-        return path.join(os.homedir(), 'Library', 'Caches', 'electron');
+    if (CUR_PLAT === 'darwin') return path.join(os.homedir(), 'Library', 'Caches', 'electron');
     return path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'electron');
 },
     /**
@@ -244,7 +243,7 @@ const getElectronCacheDir = () => {
         entries.push({ key: '.', entryFile });
         return { ok: true, entries, wildcards };
     },
-    mergeAll = async (nmDir, excludePkgs) => {
+    mergeAll = async (nmDir, excludePkgs, npmRebuild = false) => {
         let esbuild;
         try { esbuild = require('esbuild'); }
         catch { throw new Error('esbuild 未找到,请确认 @flun/desktop-builder 依赖已安装'); }
@@ -282,8 +281,14 @@ const getElectronCacheDir = () => {
             const relName = toPosix(path.relative(nmDir, pkgDir));
             if (excludePkgs.has(relName)) { skipped++; continue; }
             if (SKIP_PKGS.has(relName)) { skipped++; continue; }
-            if (hasNativeModule(pkgDir)) { skipped++; continue; }
-            if (countJS(pkgDir) <= 1) { skipped++; continue; }
+            if (hasNativeModule(pkgDir)) {
+                // 原生模块包：npmRebuild=true 时保留 scripts（编译必需），否则删除
+                if (!npmRebuild && j.scripts) { delete j.scripts; fs.writeFileSync(pj, JSON.stringify(j, null, 2)); }
+                skipped++;
+                continue;
+            }
+            // 非原生包：一律删除安装期脚本字段（运行时无安装期，且 rebuild 会触发脚本导致失败）
+            if (j.scripts) { delete j.scripts; fs.writeFileSync(pj, JSON.stringify(j, null, 2)); }
             // 已优化过的包跳过
             const mainStr = String(j.main || ''), exportsStr = JSON.stringify(j.exports || '');
             if (mainStr.includes(BUNDLED_DIR) || exportsStr.includes(BUNDLED_DIR)) { skipped++; continue; }
@@ -459,9 +464,7 @@ const getElectronCacheDir = () => {
             for (const f of fs.readdirSync(p)) {
                 const full = path.join(p, f), sub = fs.statSync(full);
                 if (sub.isDirectory()) n += clearItem(full, refs);
-                else if (!JS_RE.test(f) && !refs.has(full)) {
-                    try { fs.rmSync(full, { force: true }); n++; } catch { }
-                }
+                else if (!JS_RE.test(f) && !refs.has(full)) try { fs.rmSync(full, { force: true }), n++; } catch { }
             }
         }
         else if (!JS_RE.test(path.basename(p)) && !refs.has(p)) fs.writeFileSync(p, ''), n++;
@@ -490,7 +493,8 @@ const getElectronCacheDir = () => {
                     if (cnt > 0) cleared += cnt, pkgItems.push(`${item}(${cnt})`);
                 }
             }
-            if (process.env.OPTIMIZE_DEBUG && pkgItems.length > 0) console.log(chalk.gray(`  ✓ ${pkgRel}: ${pkgItems.join(', ')}`));
+            if (process.env.OPTIMIZE_DEBUG && pkgItems.length > 0)
+                console.log(chalk.gray(`  ✓ ${pkgRel}: ${pkgItems.join(', ')}`));
         }
         return cleared;
     },
@@ -498,11 +502,16 @@ const getElectronCacheDir = () => {
     prunePlatform = async nmDir => {
         let removed = 0;
         const readHead = file => {
+            let fd;
             try {
-                const fd = fs.openSync(file, 'r'), buf = Buffer.alloc(512), n = fs.readSync(fd, buf, 0, 512, 0);
-                fs.closeSync(fd);
-                return n > 0 ? buf.slice(0, n) : null;
-            } catch { return null; }
+                fd = fs.openSync(file, 'r');
+                const buf = Buffer.alloc(512), n = fs.readSync(fd, buf, 0, 512, 0);
+                return n > 0 ? buf.subarray(0, n) : null;
+            } catch {
+                return null;
+            } finally {
+                if (fd !== undefined) fs.closeSync(fd);
+            }
         },
             sniffPlat = buf => {
                 if (!buf || buf.length < 4) return null;
@@ -578,7 +587,7 @@ const getElectronCacheDir = () => {
         return removed;
     },
     // ==================== 清开发文件 ====================
-    pruneDevFiles = async (nmDir, nativePkgs = [], npmRebuild = false) => {
+    pruneDevFiles = async (nmDir, npmRebuild = false) => {
         let deleted = 0;
         const PATTERNS = [
             /(^|\/)tsconfig\.json$/,
@@ -592,7 +601,6 @@ const getElectronCacheDir = () => {
             /(^|\/)package-support\.json$/,
         ], DIR_SKIP = new Set([BUNDLED_DIR]),
             COMPILE_EXTS = /\.(gyp|gypi|h|hh|hpp|c|cc|cpp|cxx|m|mm)$/i,
-            inNativePkg = p => nativePkgs.some(nd => p.startsWith(nd + path.sep)),
             walk = d => {
                 for (const f of fs.readdirSync(d, { withFileTypes: true })) {
                     const full = path.join(d, f.name);
@@ -605,7 +613,7 @@ const getElectronCacheDir = () => {
                         walk(full);
                     } else {
                         const rel = toPosix(path.relative(nmDir, full));
-                        if (PATTERNS.some(re => re.test(rel)) && !(npmRebuild && COMPILE_EXTS.test(f.name) && inNativePkg(full)))
+                        if (PATTERNS.some(re => re.test(rel)) && !(npmRebuild && COMPILE_EXTS.test(f.name)))
                             try { fs.unlinkSync(full), deleted++; } catch { }
                     }
                 }
@@ -710,7 +718,6 @@ const optimizeNodeModules = async (tempDir, config = {}) => {
     await clearVerified(tempDir);  // 执行优化前清 verified,构建成功后再由 build.js 写回 true
     const t0 = Date.now();
     try {
-        const nativePkgs = npmRebuild ? findPackages(nmDir).filter(p => fs.existsSync(path.join(p, 'binding.gyp'))) : [];
         // 阶段1: 清空资源（跳过 js，留待合并阶段处理）
         console.log(chalk.cyan('  [1/6] 清空复制到项目根的资源...'));
         const c = await clearResources(nmDir, excludePkgs);
@@ -718,7 +725,7 @@ const optimizeNodeModules = async (tempDir, config = {}) => {
 
         // 阶段2: 合并
         console.log(chalk.cyan('  [2/6] 合并 JS...'));
-        const m = await mergeAll(nmDir, excludePkgs);
+        const m = await mergeAll(nmDir, excludePkgs, npmRebuild);
         console.log(chalk.green(`    合并 ${m.merged} 包,跳过 ${m.skipped},删 ${m.totalDeleted} 个 JS`));
 
         // 阶段3: 清平台二进制
@@ -728,7 +735,7 @@ const optimizeNodeModules = async (tempDir, config = {}) => {
 
         // 阶段4: 清开发文件
         console.log(chalk.cyan('  [4/6] 清理开发文件...'));
-        const d = await pruneDevFiles(nmDir, nativePkgs, npmRebuild);
+        const d = await pruneDevFiles(nmDir, npmRebuild);
         console.log(chalk.green(`    清理 ${d} 个文件`));
 
         // 阶段5: 清中间产物

@@ -75,7 +75,7 @@
 │   ├── wizard.bmp            # Inno Setup 左侧大图（164×314 BMP）
 │   └── wizardSmall.bmp       # Inno Setup 右上小图（55×58 BMP）
 ├── build.js                  # 构建主逻辑（复制文件、安装依赖、调用优化系统、electron-builder、Inno Setup 打包）
-├── optimize-node-modules.js  # node_modules 优化系统（6 阶段：合并 JS / 清空资源 / 清平台二进制 / 清开发文件 / 清中间产物 / 清不参与运行的文件和空目录）
+├── optimize-node-modules.js  # node_modules 优化系统（6 阶段：清空资源 / 合并 JS / 清平台二进制 / 清开发文件 / 清中间产物 / 清不参与运行的文件和空目录）
 ├── copy-files.js             # postinstall 脚本：复制配置模板与 build/ 到项目根目录
 ├── desktopAppConfig.js       # 配置文件模板（安装时复制到项目根目录）
 ├── electron-main.js          # Electron 主进程模板（构建时替换占位符生成 main.mjs）
@@ -328,9 +328,9 @@ menu: [
 **6 阶段优化流程**：
 
 1. **清空复制到项目根的资源**：扫描各包 `postinstall` 引用的目录/文件（如 `templates/` / `static/` / `customize/`），**保留目录结构、清空内容**（让包内 `existsSync` 自检通过）；js 文件一律保留，留待合并阶段处理；
-2. **合并 JS**：按包入口 bundle，多个 JS 文件合并为单文件（`bundled/index.mjs` / `index.cjs`）；CJS 保持 CJS、ESM 保持 ESM；
+2. **合并 JS**：按包入口 bundle，多个 JS 文件合并为单文件（`bundled/index.mjs` / `index.cjs`）；CJS 保持 CJS、ESM 保持 ESM；合并后删除各包 `package.json` 的 `scripts` 字段（运行时无安装期；`nativeModules.npmRebuild: true` 时原生模块包例外，其 scripts 是编译必需）；
 3. **清平台二进制**：逐文件判定，删除非当前平台 / 架构的二进制。采用三层识别（目录名含平台词 → 系统专有后缀 → 文件头魔数），并在平台相同时进一步比对架构（从 PE / ELF / Mach-O 文件头解析 x64 / arm64 等）；目录名可任意改、后缀可缺，仍能靠文件内容判定；同时清理 `@scope/平台纯二进制包`；
-4. **清开发文件**：删除 `.md` / `.map` / `.d.ts` / `.ts` / `.cts` / `.mts` / `.h` / `.c` / `.gyp` / `tsconfig.json` / `.nycrc` / `.editorconfig` / `package-lock.json` 等非运行文件；**递归进入嵌套 `node_modules`**，清理多层依赖中的同类文件；`nativeModules.npmRebuild: true` 时，原生模块包（含 `binding.gyp`）内的编译必需文件保留，确保重编译成功；
+4. **清开发文件**：删除 `.md` / `.map` / `.d.ts` / `.ts` / `.cts` / `.mts` / `.h` / `.c` / `.gyp` / `tsconfig.json` / `.nycrc` / `.editorconfig` / `package-lock.json` 等非运行文件；**递归进入嵌套 `node_modules`**，清理多层依赖中的同类文件；`nativeModules.npmRebuild: true` 时，所有编译类文件（`.gyp` / `.gypi` / `.h` / `.c` 等）一律保留，确保依赖的头文件（如 `node-addon-api`）不被误删；
 5. **清中间产物**：删除 `package.json.orig` 等合并过程中的临时文件；
 6. **清不参与运行的文件和空目录**：删除以下非运行文件，并自底向上清除空目录：
    - `license*` / `licence*` / `LICENSE*` / `LICENCE*`（含 `LICENSE-MIT` 等变体）
@@ -379,7 +379,7 @@ build: {
 - **`outputDir`**：最终安装包的输出目录，默认为 `./dist`;
 - **`publisher`**：发布者名称，用于安装程序信息；不填则从 `package.json` 的 `author` 读取;
 - **`shortcutName`**：快捷方式显示名称；不填则使用 `appName`;
-- **`nativeModules.npmRebuild`**：是否重编译原生模块;设为 `false` 可跳过重编译，减少构建时间（默认 `false`）;
+- **`nativeModules.npmRebuild`**：是否重编译原生模块；设为 `false` 可跳过重编译，减少构建时间（默认 `false`）；设为 `true` 时，优化系统保留所有编译类文件（`.gyp` / `.h` / `.c` 等）与原生模块包的 `scripts`，确保编译所需的头文件与安装脚本不被清理；
 - **`toolsets`**：electron-builder 的官方字段，会被原样写入 `builder.json`;但本工具**只构建当前运行平台**，`toolsets` 不会改变构建结果——它只在与 electron-builder 的跨平台构建能力配合时才有意义;本工具不提供跨平台构建入口，因此**不建议配置此字段**；若你仍写入，构建不会被阻断，但也不会有任何效果;
 
 #### 4.2 Windows (`build.win`)
