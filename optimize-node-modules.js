@@ -5,9 +5,18 @@ import { createRequire } from 'module';
 import { execSync } from 'child_process';
 import chalk from 'chalk';
 
-const require = createRequire(import.meta.url), subpath = (...parts) => './' + path.posix.join(...parts),
-    BUNDLED_DIR = 'bundled', NM_DIR = 'node_modules', PKG_JSON = 'package.json', CUR_PLAT = process.platform,
-    CUR_ARCH = process.arch, ENTRY_EXTS = ['.js', '.cjs', '.mjs', '/index.js', '/index.cjs', '/index.mjs'],
+/**
+ * 当前系统平台:CUR_ARCH
+ * >查看定义:@see {@link CUR_ARCH}
+ */
+const CUR_ARCH = process.arch;
+/**
+ * 当前系统架构:CUR_PLAT
+ * >查看定义:@see {@link CUR_PLAT}
+ */
+const CUR_PLAT = process.platform, require = createRequire(import.meta.url),
+    subpath = (...parts) => './' + path.posix.join(...parts), BUNDLED_DIR = 'bundled', NM_DIR = 'node_modules',
+    PKG_JSON = 'package.json', ENTRY_EXTS = ['.js', '.cjs', '.mjs', '/index.js', '/index.cjs', '/index.mjs'],
     JS_RE = /\.(js|mjs|cjs)$/, DOT_SLASH_RE = /^\.\//, POSIX_RE = /\\/g, PKG_SUBPATH = subpath(PKG_JSON),
     SCRIPT_FILE_RE = /([\p{L}\p{N}_.\-/\\]+\.(?:js|cjs|mjs))/u,
     SNAPSHOT_FILE = '.deps-snapshot.json', SKIP_PKGS = new Set(['esbuild', '@esbuild', 'node-gyp-build',
