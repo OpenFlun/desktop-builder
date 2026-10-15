@@ -148,7 +148,9 @@ const require = createRequire(import.meta.url), __dirname = path.dirname(fileURL
       log(`正在清理端口 ${port}（尝试 ${attempt}/3）...`);
       await ensurePortFree(port), log('正在启动服务器进程...');
       const env = { ...process.env, NODE_PATH: path.join(__dirname, 'node_modules'), ELECTRON_RUN_AS_NODE: '1' };
-      serverProcess = spawn(process.execPath, [serverPath], { cwd: __dirname, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env });
+      serverProcess = spawn(process.execPath, [serverPath], {
+        cwd: __dirname, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env
+      });
       serverProcess.stdout.on('data', d => log('服务器 stdout: ' + d.toString().trim()));
       serverProcess.stderr.on('data', d => log('服务器 stderr: ' + d.toString().trim()));
       serverProcess.on('error', err => log('服务器进程错误: ' + err.message)), serverProcess.unref();
@@ -249,9 +251,7 @@ app.whenReady().then(async () => {
   // 检查 node_modules 是否存在
   const nodeModulesPath = path.join(__dirname, 'node_modules');
   if (!fs.existsSync(nodeModulesPath)) return log('[错误] node_modules 缺失,请重新安装应用程序;'), app.quit();
-  await startServer();
-  await createWindow();
-  startFocusRestore();
+  await startServer(), await createWindow(), startFocusRestore();
 });
 
 app.on('window-all-closed', () => {

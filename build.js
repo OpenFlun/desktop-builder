@@ -7,14 +7,13 @@ import chalk from 'chalk';
 import { execa } from 'execa';
 import { minimatch } from 'minimatch';
 import AdmZip from 'adm-zip';
-import { markVerified, optimizeNodeModules, clearVerified, SELF_HASH } from './optimize-node-modules.js';
+import {
+    CUR_ARCH, CUR_PLAT, clearVerified, findFileRecursive, getElectronCacheDir, markVerified, optimizeNodeModules,
+    SELF_HASH
+} from './optimize-node-modules.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = createRequire(import.meta.url),
     CACHE_DIR = path.join(os.homedir(), '.electron-builder-cache'),
-    /** 当前平台（process.platform 的短别名） */
-    CUR_PLAT = process.platform,
-    /** 当前架构（process.arch 的短别名） */
-    CUR_ARCH = process.arch,
     /**
      * 判断是否为非空普通对象(排除 null/数组/字符串等)
      * @param {*} v 待判断的值
@@ -63,31 +62,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
             console.error(chalk.red('[' + '错误' + '] 证书文件不存在: ' + absPath)), process.exit(1);
         return absPath;
     },
-    /** 定位 Electron 缓存目录（与 @electron/get 一致） */
-    getElectronCacheDir = () => {
-        if (CUR_PLAT === 'win32')
-            return path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'electron', 'Cache');
-        if (CUR_PLAT === 'darwin')
-            return path.join(os.homedir(), 'Library', 'Caches', 'electron');
-        return path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'electron');
-    },
-    /** 递归查找指定文件名，返回首个命中的绝对路径 */
-    findFileRecursive = (dir, fileName) => {
-        let found = null;
-        const walk = d => {
-            if (found) return;
-            let entries;
-            try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
-            for (const e of entries) {
-                if (found) return;
-                const full = path.join(d, e.name);
-                if (e.isDirectory()) walk(full);
-                else if (e.name === fileName) { found = full; return; }
-            }
-        };
-        walk(dir);
-        return found;
-    },
     /**
      * 清理 Electron 缓存：只保留当前版本+平台的 zip 及其同名解压目录，其余（其它版本、其它平台）一律删除
      * @param {string} cacheDir Electron 缓存根目录
@@ -95,20 +69,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
      * @returns {number} 清理的条目数
      */
     cleanupElectronCache = (cacheDir, keepZip) => {
-        const keepDir = keepZip.replace(/\.zip$/i, ''), toDel = [];
-        const walk = d => {
-            let entries;
-            try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
-            for (const e of entries) {
-                const full = path.join(d, e.name);
-                if (e.isDirectory()) {
-                    if (/^electron-v/i.test(e.name) && e.name !== keepDir) toDel.push({ p: full, dir: true });
-                    else if (e.name !== keepDir) walk(full);
-                } else if (/^electron-v.*\.zip$/i.test(e.name) && e.name !== keepZip) {
-                    toDel.push({ p: full, dir: false });
+        const keepDir = keepZip.replace(/\.zip$/i, ''), toDel = [],
+            walk = d => {
+                let entries;
+                try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+                for (const e of entries) {
+                    const full = path.join(d, e.name);
+                    if (e.isDirectory()) {
+                        if (/^electron-v/i.test(e.name) && e.name !== keepDir) toDel.push({ p: full, dir: true });
+                        else if (e.name !== keepDir) walk(full);
+                    }
+                    else if (/^electron-v.*\.zip$/i.test(e.name) && e.name !== keepZip) toDel.push({ p: full, dir: false });
                 }
-            }
-        };
+            };
         walk(cacheDir);
         let n = 0;
         for (const { p, dir } of toDel) {
@@ -375,7 +348,9 @@ const build = async () => {
     if (shouldOptimize) {
         console.log(chalk.cyan('[信息] 正在执行优化...'));
         try {
-            await optimizeNodeModules(tempDir, { ...(optimizeCfg || {}), npmRebuild: buildConfig.nativeModules?.npmRebuild === true });
+            await optimizeNodeModules(tempDir, {
+                ...(optimizeCfg || {}), npmRebuild: buildConfig.nativeModules?.npmRebuild === true
+            });
         } catch (err) {
             console.error(chalk.red("[错误] node_modules 优化失败：" + err.message));
             console.error(chalk.yellow("[提示] 可在 desktopAppConfig.js 中设置 optimize: { enabled: false } 关闭优化,"));
@@ -402,8 +377,7 @@ const build = async () => {
     }),
         files = ["**/*", "!builder.json", ...userExcludePatterns], output = path.join(tempDir, 'app'), configObj = {
             files, asar: false, nativeModules: { npmRebuild: false }, electronVersion, appId,
-            ...(electronDist ? { electronDist } : {}),
-            productName: appName, ...restBuild
+            ...(electronDist ? { electronDist } : {}), productName: appName, ...restBuild
         };
     configObj.directories = { ...(configObj.directories || {}), output };
     // 平台特定配置（映射处理）

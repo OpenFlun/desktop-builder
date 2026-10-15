@@ -18,44 +18,58 @@ const require = createRequire(import.meta.url), subpath = (...parts) => './' + p
         linux: ['linux'], freebsd: ['freebsd'], openbsd: ['openbsd'], sunos: ['sunos', 'solaris'], aix: ['aix']
     }, myPlat = PLATFORM_MAP[CUR_PLAT] || [CUR_PLAT],
     ARCH_MAP = { x64: ['x64', 'x86_64', 'amd64'], arm64: ['arm64', 'aarch64'], ia32: ['ia32', 'x86', 'i386'], arm: ['arm'] },
-    myArch = ARCH_MAP[CUR_ARCH] || [CUR_ARCH], INDEX_FILES = ['index.js', 'index.cjs', 'index.mjs'],
-    // ==================== 通用工具 ====================
-    toPosix = p => p.replace(POSIX_RE, '/'),
-    pickCond = (v, prefer) => {
-        if (typeof v === 'string') return v;
-        if (v && typeof v === 'object') {
-            for (const k of prefer) {
-                const r = pickCond(v[k], prefer);
-                if (r) return r;
-            }
-        }
-        return null;
-    },
-    /** 定位 Electron 缓存目录（与 @electron/get 一致） */
-    getElectronCacheDir = () => {
-        if (CUR_PLAT === 'win32')
-            return path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'electron', 'Cache');
-        if (CUR_PLAT === 'darwin')
-            return path.join(os.homedir(), 'Library', 'Caches', 'electron');
-        return path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'electron');
-    },
-    /** 递归查找指定文件名，返回首个命中的绝对路径 */
-    findFileRecursive = (dir, fileName) => {
-        let found = null;
-        const walk = d => {
+    myArch = ARCH_MAP[CUR_ARCH] || [CUR_ARCH], INDEX_FILES = ['index.js', 'index.cjs', 'index.mjs'];
+// ==================== 通用工具 ====================
+
+/**
+ * 清除快照中的 verified 标记（优化开始或构建失败时调用）
+ * >查看定义:@see {@link clearVerified }
+ * @param {string} tempDir 临时构建目录
+ * @returns {Promise<void>}
+ */
+const clearVerified = async tempDir => {
+    const p = path.join(tempDir, SNAPSHOT_FILE);
+    if (!await fs.pathExists(p)) return;
+    try {
+        const old = await fs.readJson(p);
+        if (old.verified !== false) old.verified = false, await fs.writeJson(p, old, { spaces: 2 });
+    } catch { }
+};
+/**
+ * 递归查找指定文件名，返回首个命中的绝对路径
+ * >查看定义:@see {@link findFileRecursive}
+ * @param {string} dir 起始目录
+ * @param {string} fileName 目标文件名
+ * @returns {string|null} 命中的绝对路径，未找到则返回 null
+ */
+const findFileRecursive = (dir, fileName) => {
+    let found = null;
+    const walk = d => {
+        if (found) return;
+        let entries;
+        try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
             if (found) return;
-            let entries;
-            try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
-            for (const e of entries) {
-                if (found) return;
-                const full = path.join(d, e.name);
-                if (e.isDirectory()) walk(full);
-                else if (e.name === fileName) { found = full; return; }
-            }
-        };
-        walk(dir);
-        return found;
-    },
+            const full = path.join(d, e.name);
+            if (e.isDirectory()) walk(full);
+            else if (e.name === fileName) { found = full; return; }
+        }
+    };
+    walk(dir);
+    return found;
+};
+/**
+* 定位 Electron 缓存目录（与 @electron/get 一致）
+* >查看定义:@see {@link getElectronCacheDir}
+* @returns {string} 缓存目录绝对路径
+*/
+const getElectronCacheDir = () => {
+    if (CUR_PLAT === 'win32')
+        return path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'electron', 'Cache');
+    if (CUR_PLAT === 'darwin')
+        return path.join(os.homedir(), 'Library', 'Caches', 'electron');
+    return path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'electron');
+},
     /**
      * 读取 Electron 内置 Node 主版本号（用于 esbuild target）
      * 从 Electron 缓存目录中已解压的二进制读取（ELECTRON_RUN_AS_NODE）；
@@ -70,10 +84,13 @@ const require = createRequire(import.meta.url), subpath = (...parts) => './' + p
                     zipPath = findFileRecursive(cacheDir, zipName);
                 if (zipPath) {
                     const unzipDir = zipPath.slice(0, -4),
-                        exeRel = { win32: 'electron.exe', darwin: 'Electron.app/Contents/MacOS/Electron', linux: 'electron' }[CUR_PLAT],
-                        exe = exeRel ? path.join(unzipDir, exeRel) : null;
+                        exeRel = {
+                            win32: 'electron.exe', darwin: 'Electron.app/Contents/MacOS/Electron', linux: 'electron'
+                        }[CUR_PLAT], exe = exeRel ? path.join(unzipDir, exeRel) : null;
+
                     if (exe && fs.existsSync(exe)) {
-                        const out = execSync(`"${exe}" -p "process.versions.node"`, { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8' }).trim();
+                        const out = execSync(`"${exe}" -p "process.versions.node"`,
+                            { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8' }).trim();
                         return out.split('.')[0];
                     }
                 }
@@ -82,6 +99,17 @@ const require = createRequire(import.meta.url), subpath = (...parts) => './' + p
         console.log(chalk.yellow('[提示] 未找到 Electron 已解压二进制，暂用 v24 优化'));
         return '24';
     },
+    toPosix = p => p.replace(POSIX_RE, '/'),
+    pickCond = (v, prefer) => {
+        if (typeof v === 'string') return v;
+        if (v && typeof v === 'object') {
+            for (const k of prefer) {
+                const r = pickCond(v[k], prefer);
+                if (r) return r;
+            }
+        }
+        return null;
+    },
     // ==================== 快照 ====================
     writeSnapshotFlags = async tempDir => {
         const p = path.join(tempDir, SNAPSHOT_FILE);
@@ -89,35 +117,33 @@ const require = createRequire(import.meta.url), subpath = (...parts) => './' + p
         const old = await fs.readJson(p);
         old.platform = CUR_PLAT, old.arch = CUR_ARCH, old.optimizeHash = SELF_HASH, old.verified = false;
         old.optimized = true, await fs.writeJson(p, old, { spaces: 2 });
-    };
-
-
-// ==================== 扫描工具 ====================
-const findPackages = dir => {
-    const result = [];
-    if (!fs.existsSync(dir)) return result;
-    for (const entry of fs.readdirSync(dir)) {
-        if (entry === '.bin' || entry.startsWith('.')) continue;
-        const full = path.join(dir, entry);
-        if (!fs.statSync(full).isDirectory()) continue;
-        if (entry === NM_DIR) { result.push(...findPackages(full)); continue; }
-        if (entry.startsWith('@')) {
-            for (const sub of fs.readdirSync(full)) {
-                const pkgDir = path.join(full, sub);
-                if (fs.statSync(pkgDir).isDirectory()) {
-                    result.push(pkgDir);
-                    const nested = path.join(pkgDir, NM_DIR);
-                    if (fs.existsSync(nested)) result.push(...findPackages(nested));
+    },
+    // ==================== 扫描工具 ====================
+    findPackages = dir => {
+        const result = [];
+        if (!fs.existsSync(dir)) return result;
+        for (const entry of fs.readdirSync(dir)) {
+            if (entry === '.bin' || entry.startsWith('.')) continue;
+            const full = path.join(dir, entry);
+            if (!fs.statSync(full).isDirectory()) continue;
+            if (entry === NM_DIR) { result.push(...findPackages(full)); continue; }
+            if (entry.startsWith('@')) {
+                for (const sub of fs.readdirSync(full)) {
+                    const pkgDir = path.join(full, sub);
+                    if (fs.statSync(pkgDir).isDirectory()) {
+                        result.push(pkgDir);
+                        const nested = path.join(pkgDir, NM_DIR);
+                        if (fs.existsSync(nested)) result.push(...findPackages(nested));
+                    }
                 }
+            } else {
+                result.push(full);
+                const nested = path.join(full, NM_DIR);
+                if (fs.existsSync(nested)) result.push(...findPackages(nested));
             }
-        } else {
-            result.push(full);
-            const nested = path.join(full, NM_DIR);
-            if (fs.existsSync(nested)) result.push(...findPackages(nested));
         }
-    }
-    return result;
-},
+        return result;
+    },
     hasNativeModule = dir => {
         let found = false;
         const walk = d => {
@@ -215,9 +241,8 @@ const findPackages = dir => {
         catch { throw new Error('esbuild 未找到,请确认 @flun/desktop-builder 依赖已安装'); }
 
         const packages = findPackages(nmDir), nodeMajor = getElectronNodeMajor();
-        let merged = 0, skipped = 0, totalDeleted = 0;
         // 调试模式:预扫各包的 postinstall 资源目录,用于统计被阶段1 删除的资源 JS
-        let resMap = null, resLog = null;
+        let merged = 0, skipped = 0, totalDeleted = 0, resMap = null, resLog = null;
         if (process.env.OPTIMIZE_DEBUG) {
             resMap = new Map(), resLog = [];
             for (const pkgDir of packages) {
@@ -334,7 +359,6 @@ const findPackages = dir => {
             if (j.exports && j.exports[PKG_SUBPATH]) newExports[PKG_SUBPATH] = j.exports[PKG_SUBPATH];
 
             fs.writeFileSync(pj + '.orig', JSON.stringify(j));
-
             // 通配符覆盖路径保护
             const wildcardPrefixes = parse.wildcards.map(w => w.replace(DOT_SLASH_RE, '').replace(/\/\*.*$/, '/'))
                 .filter(Boolean);
@@ -372,7 +396,7 @@ const findPackages = dir => {
         }
 
         if (resLog && resLog.length > 0) {
-        console.log(chalk.gray('  处理保留的资源 JS（被引用则合并，否则删除）:'));
+            console.log(chalk.gray('  处理保留的资源 JS（被引用则合并，否则删除）:'));
             for (const line of resLog) console.log(chalk.gray(line));
         }
         return { merged, skipped, totalDeleted };
@@ -394,9 +418,8 @@ const findPackages = dir => {
                         while ((m = re.exec(code)) !== null) {
                             const abs = path.resolve(path.dirname(full), m[1]);
                             refs.add(abs);
-                            if (!path.extname(abs)) {
+                            if (!path.extname(abs))
                                 for (const ext of ENTRY_EXTS) if (fs.existsSync(abs + ext)) refs.add(abs + ext);
-                            }
                         }
                     }
                 }
@@ -431,9 +454,8 @@ const findPackages = dir => {
                     try { fs.rmSync(full, { force: true }); n++; } catch { }
                 }
             }
-        } else if (!JS_RE.test(path.basename(p)) && !refs.has(p)) {
-            fs.writeFileSync(p, ''); n++;
         }
+        else if (!JS_RE.test(path.basename(p)) && !refs.has(p)) fs.writeFileSync(p, ''), n++;
         return n;
     },
     clearResources = async (nmDir, excludePkgs) => {
@@ -489,19 +511,23 @@ const findPackages = dir => {
                         const off = buf.readUInt32LE(0x3C);
                         if (off + 6 > buf.length) return null;
                         const m = buf.readUInt16LE(off + 4);
-                        return m === 0x8664 ? 'x64' : m === 0xAA64 ? 'arm64' : m === 0x14C ? 'ia32' : (m === 0x1C0 || m === 0x1C4) ? 'arm' : null;
+                        return m === 0x8664 ? 'x64' : m === 0xAA64 ? 'arm64' : m === 0x14C ?
+                            'ia32' : (m === 0x1C0 || m === 0x1C4) ? 'arm' : null;
                     }
                     if (hex === '7F454C46') {
                         const m = buf.readUInt16LE(0x12);
-                        return m === 0x3E ? 'x64' : m === 0xB7 ? 'arm64' : m === 0x28 ? 'arm' : m === 0x03 ? 'ia32' : null;
+                        return m === 0x3E ? 'x64' : m === 0xB7 ? 'arm64' : m === 0x28 ? 'arm' : m === 0x03 ?
+                            'ia32' : null;
                     }
                     if (hex === 'CFFAEDFE' || hex === 'CEFAEDFE') {
                         const c = buf.readUInt32LE(4);
-                        return c === 0x01000007 ? 'x64' : c === 0x0100000C ? 'arm64' : c === 0x7 ? 'ia32' : c === 0xC ? 'arm' : null;
+                        return c === 0x01000007 ? 'x64' : c === 0x0100000C ? 'arm64' : c === 0x7 ? 'ia32' : c === 0xC ?
+                            'arm' : null;
                     }
                     if (hex === 'FEEDFACF' || hex === 'FEEDFACE') {
                         const c = buf.readUInt32BE(4);
-                        return c === 0x01000007 ? 'x64' : c === 0x0100000C ? 'arm64' : c === 0x7 ? 'ia32' : c === 0xC ? 'arm' : null;
+                        return c === 0x01000007 ? 'x64' : c === 0x0100000C ? 'arm64' : c === 0x7 ? 'ia32' : c === 0xC ?
+                            'arm' : null;
                     }
                 } catch { }
                 return null;
@@ -643,7 +669,7 @@ const findPackages = dir => {
 // ==================== 导出函数 ====================
 /**
  * 标记快照 verified=true（构建全流程成功后由 build.js 调用）
- * >查看定义:@see {@link clearVerified}
+ * >查看定义:@see {@link markVerified}
  * @param {string} tempDir 临时构建目录
  * @returns {Promise<void>}
  */
@@ -657,7 +683,7 @@ const markVerified = async tempDir => {
 };
 /**
  * 执行 node_modules 六阶段优化
- * >查看定义:@see {@link SELF_HASH}
+ * >查看定义:@see {@link optimizeNodeModules}
  * @param {string} tempDir 临时构建目录
  * @param {object} [config] 优化配置
  * @param {string[]} [config.exclude] 排除的包名列表
@@ -718,22 +744,8 @@ const optimizeNodeModules = async (tempDir, config = {}) => {
     }
 };
 /**
- * 清除快照中的 verified 标记（优化开始或构建失败时调用）
- * >查看定义:@see {@link markVerified}
- * @param {string} tempDir 临时构建目录
- * @returns {Promise<void>}
- */
-const clearVerified = async tempDir => {
-    const p = path.join(tempDir, SNAPSHOT_FILE);
-    if (!await fs.pathExists(p)) return;
-    try {
-        const old = await fs.readJson(p);
-        if (old.verified !== false) old.verified = false, await fs.writeJson(p, old, { spaces: 2 });
-    } catch { }
-};
-/**
  * 当前优化文件的 SHA256 前 16 位（缓存指纹:优化代码一改,缓存自动失效）
- * >查看定义:@see {@link optimizeNodeModules}
+ * >查看定义:@see {@link SELF_HASH}
  */
 const SELF_HASH = (() => {
     try {
@@ -742,4 +754,7 @@ const SELF_HASH = (() => {
     } catch { return 'unknown'; }
 })();
 
-export { markVerified, optimizeNodeModules, clearVerified, SELF_HASH };
+export {
+    CUR_ARCH, CUR_PLAT, clearVerified, findFileRecursive, getElectronCacheDir, markVerified, optimizeNodeModules,
+    SELF_HASH
+};
