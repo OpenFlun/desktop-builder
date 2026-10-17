@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, shell } from 'electron';
+﻿import { app, BrowserWindow, Menu, shell } from 'electron';
 import { spawn, exec } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -114,14 +114,15 @@ const require = createRequire(import.meta.url), __dirname = path.dirname(fileURL
   },
   // 等待服务器就绪
   waitForServer = async (port, timeout = 30000) => {
-    const start = Date.now(), protocol = new URL(CONFIG.APP_URL).protocol,
-      httpModule = protocol === 'https:' ? https : http;
+    const start = Date.now(), url = new URL(CONFIG.APP_URL), protocol = url.protocol,
+      httpModule = protocol === 'https:' ? https : http,
+      hostname = url.hostname.replace(/^\[|\]$/g, '');
 
     return new Promise(resolve => {
       const check = () => {
         if (Date.now() - start > timeout) return log('服务器就绪超时'), resolve(false);
         const req = httpModule.get({
-          hostname: '127.0.0.1', port: port, path: '/',
+          hostname, port, path: '/',
           rejectUnauthorized: false, timeout: 5000
         }, res => { resolve(true), req.destroy() });
 

@@ -1,4 +1,4 @@
-# @flun/desktop-builder
+﻿# @flun/desktop-builder
 
 > 将任意 Node.js 项目一键打包为当前平台的桌面应用 (Windows, macOS, Linux)（基于 Electron）,支持高度自定义配置;
 
@@ -99,6 +99,7 @@
 ```json
 {
   "allowScripts": {
+    "esbuild": true,
     "@flun/desktop-builder": true
     // 如果依赖的其它包（如 bcrypt、electron-winstaller 等）也有脚本,请按需添加,格式相同
   }
@@ -181,10 +182,10 @@ await build();
 | `build`               | `object`   | 打包配置（应用标识、输出目录、图标、安装选项、签名等）       | [4. 打包配置](#4-打包配置-build)                |
 | `advanced`            | `object`   | Node.js 子进程启停行为                                       | [5. 高级选项](#5-高级选项-advanced)             |
 | `allowScripts`        | `object`   | 构建阶段放行安装脚本的包名列表                               | [6. 允许安装脚本](#6-允许安装脚本-allowscripts) |
-| `excludeFiles`        | `string[]` | 复制项目文件时排除的文件/目录                          | [7. 排除规则](#7-排除规则)                         |
-| `excludeDependencies` | `string[]` | 从最终依赖列表中移除的 npm 包                        | [7. 排除规则](#7-排除规则)                         |
-| `excludeOutputs`      | `string[]` | 从最终输出目录中排除的文件                            | [7. 排除规则](#7-排除规则)                         |
-| `optimize`            | `object`   | 优化配置（`enabled` 开关、`exclude` 排除异常或不想优化的包） | [8. optimize](#8-node_modules-优化-optimize) |
+| `excludeFiles`        | `string[]` | 复制项目文件时排除的文件/目录                                | [7. 排除规则](#7-排除规则)                      |
+| `excludeDependencies` | `string[]` | 从最终依赖列表中移除的 npm 包                                | [7. 排除规则](#7-排除规则)                      |
+| `excludeOutputs`      | `string[]` | 从最终输出目录中排除的文件                                   | [7. 排除规则](#7-排除规则)                      |
+| `optimize`            | `object`   | 优化配置（`enabled` 开关、`exclude` 排除异常或不想优化的包） | [8. optimize](#8-node_modules-优化-optimize)    |
 
 `build` 子字段概览：
 
@@ -604,7 +605,7 @@ advanced: {
 }
 ```
 
-- **`autoStartServer`**：设为 `true` 时，Electron 主窗口加载前会自动启动 `serverPath` 指定的 Node.js 子进程，等待其就绪后再显示窗口;默认 `true`;
+- **`autoStartServer`**：设为 `true` 时，Electron 主窗口加载前会自动启动 `serverPath` 指定的 Node.js 子进程，等待其就绪后再显示窗口;就绪探测动态跟随 `appUrl` 的主机与端口，`appUrl` 填固定地址（`127.0.0.1`、`::1`）或动态地址（域名、具体绑定主机）均兼容，探测目标始终与窗口加载地址一致，避免服务器已监听却因探测回环而误判未就绪;默认 `true`;
 - **`autoKillServer`**：设为 `true` 时，应用退出时会自动关闭 Node.js 子进程，避免残留;默认 `true`;
 
 ---
