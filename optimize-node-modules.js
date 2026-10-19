@@ -29,9 +29,8 @@ const CUR_PLAT = process.platform, require = createRequire(import.meta.url),
     ARCH_MAP = { x64: ['x64', 'x86_64', 'amd64'], arm64: ['arm64', 'aarch64'], ia32: ['ia32', 'x86', 'i386'], arm: ['arm'] },
     myArch = ARCH_MAP[CUR_ARCH] || [CUR_ARCH], INDEX_FILES = ['index.js', 'index.cjs', 'index.mjs'];
 // ==================== 通用工具 ====================
-
 /**
- * 清除快照中的 verified 标记（优化开始或构建失败时调用）
+ * 清除快照中的 verified 标记(优化开始或构建失败时调用)
  * >查看定义:@see {@link clearVerified }
  * @param {string} tempDir 临时构建目录
  * @returns {Promise<void>}
@@ -45,11 +44,11 @@ const clearVerified = async tempDir => {
     } catch { }
 };
 /**
- * 递归查找指定文件名，返回首个命中的绝对路径
+ * 递归查找指定文件名,返回首个命中的绝对路径
  * >查看定义:@see {@link findFileRecursive}
  * @param {string} dir 起始目录
  * @param {string} fileName 目标文件名
- * @returns {string|null} 命中的绝对路径，未找到则返回 null
+ * @returns {string|null} 命中的绝对路径,未找到则返回 null
  */
 const findFileRecursive = (dir, fileName) => {
     let found = null;
@@ -68,7 +67,7 @@ const findFileRecursive = (dir, fileName) => {
     return found;
 };
 /**
-* 定位 Electron 缓存目录（与 @electron/get 一致）
+* 定位 Electron 缓存目录(与 @electron/get 一致)
 * >查看定义:@see {@link getElectronCacheDir}
 * @returns {string} 缓存目录绝对路径
 */
@@ -79,9 +78,9 @@ const getElectronCacheDir = () => {
     return path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'electron');
 },
     /**
-     * 读取 Electron 内置 Node 主版本号（用于 esbuild target）
-     * 从 Electron 缓存目录中已解压的二进制读取（ELECTRON_RUN_AS_NODE）；
-     * 未解压或读取失败时，暂用 24 兜底（对应 Electron 44 内置版本）
+     * 读取 Electron 内置 Node 主版本号(用于 esbuild target)
+     * 从 Electron 缓存目录中已解压的二进制读取(ELECTRON_RUN_AS_NODE);
+     * 未解压或读取失败时,暂用 package.json 中electronNodeFallback.version值兜底;
      */
     getElectronNodeMajor = () => {
         try {
@@ -104,10 +103,10 @@ const getElectronCacheDir = () => {
                 }
             }
         } catch { }
-        console.log(chalk.yellow('[提示] 未找到 Electron 已解压二进制，暂用 v24 优化'));
-        return '24';
-    },
-    toPosix = p => p.replace(POSIX_RE, '/'),
+        const fallbackMajor = String(require('./package.json').electronNodeFallback?.version || '24');
+        console.log(chalk.yellow('[提示] 未找到 Electron 已解压二进制,暂用 v' + fallbackMajor + ' 优化'));
+        return fallbackMajor;
+    }, toPosix = p => p.replace(POSIX_RE, '/'),
     pickCond = (v, prefer) => {
         if (typeof v === 'string') return v;
         if (v && typeof v === 'object') {
@@ -119,11 +118,12 @@ const getElectronCacheDir = () => {
         return null;
     },
     // ==================== 快照 ====================
-    writeSnapshotFlags = async tempDir => {
+    writeSnapshotFlags = async (tempDir, npmRebuild) => {
         const p = path.join(tempDir, SNAPSHOT_FILE);
         if (!await fs.pathExists(p)) return;
         const old = await fs.readJson(p);
         old.platform = CUR_PLAT, old.arch = CUR_ARCH, old.optimizeHash = SELF_HASH, old.verified = false;
+        old.npmRebuild = npmRebuild === true;
         old.optimized = true, await fs.writeJson(p, old, { spaces: 2 });
     },
     // ==================== 扫描工具 ====================
@@ -243,7 +243,7 @@ const getElectronCacheDir = () => {
         entries.push({ key: '.', entryFile });
         return { ok: true, entries, wildcards };
     },
-    mergeAll = async (nmDir, excludePkgs, npmRebuild = false) => {
+    mergeAll = async (nmDir, excludePkgs) => {
         let esbuild;
         try { esbuild = require('esbuild'); }
         catch { throw new Error('esbuild 未找到,请确认 @flun/desktop-builder 依赖已安装'); }
@@ -282,13 +282,14 @@ const getElectronCacheDir = () => {
             if (excludePkgs.has(relName)) { skipped++; continue; }
             if (SKIP_PKGS.has(relName)) { skipped++; continue; }
             if (hasNativeModule(pkgDir)) {
-                // 原生模块包：npmRebuild=true 时保留 scripts（编译必需），否则删除
-                if (!npmRebuild && j.scripts) { delete j.scripts; fs.writeFileSync(pj, JSON.stringify(j, null, 2)); }
+                // 原生模块包:编译已在优化前完成,安装期脚本无用,一律删除
+                if (j.scripts) { delete j.scripts; fs.writeFileSync(pj, JSON.stringify(j, null, 2)); }
                 skipped++;
                 continue;
             }
-            // 非原生包：一律删除安装期脚本字段（运行时无安装期，且 rebuild 会触发脚本导致失败）
+            // 非原生包:一律删除安装期脚本字段(运行时无安装期,且 rebuild 会触发脚本导致失败)
             if (j.scripts) { delete j.scripts; fs.writeFileSync(pj, JSON.stringify(j, null, 2)); }
+            if (countJS(pkgDir) <= 1) { skipped++; continue; }
             // 已优化过的包跳过
             const mainStr = String(j.main || ''), exportsStr = JSON.stringify(j.exports || '');
             if (mainStr.includes(BUNDLED_DIR) || exportsStr.includes(BUNDLED_DIR)) { skipped++; continue; }
@@ -325,7 +326,7 @@ const getElectronCacheDir = () => {
                 }
                 if (isESM) newExports[e.key] = subpath(BUNDLED_DIR, outName);
                 else {
-                    // CJS 包：若 bundle 末尾是 module.exports = require_xxx()（整体赋值）,
+                    // CJS 包:若 bundle 末尾是 module.exports = require_xxx()(整体赋值),
                     // cjs-module-lexer 静态分析拿不到命名导出,此时定位主入口的 __commonJS 块,
                     // 块内抓 exports.X = 形式,追加显式声明让 lexer 识别;
                     try {
@@ -410,7 +411,7 @@ const getElectronCacheDir = () => {
         }
 
         if (resLog && resLog.length > 0) {
-            console.log(chalk.gray('  处理保留的资源 JS（被引用则合并，否则删除）:'));
+            console.log(chalk.gray('  处理保留的资源 JS(被引用则合并,否则删除):'));
             for (const line of resLog) console.log(chalk.gray(line));
         }
         return { merged, skipped, totalDeleted };
@@ -587,20 +588,20 @@ const getElectronCacheDir = () => {
         return removed;
     },
     // ==================== 清开发文件 ====================
-    pruneDevFiles = async (nmDir, npmRebuild = false) => {
+    pruneDevFiles = async (nmDir) => {
         let deleted = 0;
         const PATTERNS = [
             /(^|\/)tsconfig\.json$/,
             /(^|\/)\.nycrc(\.(json|yml))?$/,
             /(^|\/)\.editorconfig$/, /(^|\/)\.prettierignore$/, /(^|\/)\.eslintignore$/,
             /(^|\/)\.dockerignore$/, /(^|\/)\.gitignore$/, /(^|\/)\.gitattributes$/, /(^|\/)\.npmignore$/,
-            /\.(md|markdown)$/i, /\.(gyp|gypi)$/i, /\.(yml|yaml)$/i, /\.(h|c)$/,
-            /\.d\.ts$/, /\.map$/, /metafile-.*\.json$/,
+            /\.(md|markdown)$/i, /\.(yml|yaml)$/i,
+            /\.(gyp|gypi|h|hh|hpp|c|cc|cpp|cxx|m|mm)$/i,
+            /\.map$/, /metafile-.*\.json$/,
             /(^|\/)\.eslintrc(\.(json|yml|js|cjs))?$/, /(^|\/)\.babelrc(\.(json|js))?$/,
             /(^|\/)package-lock\.json$/, /(^|\/)\.package-lock\.json$/, /(^|\/)yarn\.lock$/,
             /(^|\/)package-support\.json$/,
         ], DIR_SKIP = new Set([BUNDLED_DIR]),
-            COMPILE_EXTS = /\.(gyp|gypi|h|hh|hpp|c|cc|cpp|cxx|m|mm)$/i,
             walk = d => {
                 for (const f of fs.readdirSync(d, { withFileTypes: true })) {
                     const full = path.join(d, f.name);
@@ -613,8 +614,7 @@ const getElectronCacheDir = () => {
                         walk(full);
                     } else {
                         const rel = toPosix(path.relative(nmDir, full));
-                        if (PATTERNS.some(re => re.test(rel)) && !(npmRebuild && COMPILE_EXTS.test(f.name)))
-                            try { fs.unlinkSync(full), deleted++; } catch { }
+                        if (PATTERNS.some(re => re.test(rel))) try { fs.unlinkSync(full), deleted++; } catch { }
                     }
                 }
             };
@@ -623,19 +623,21 @@ const getElectronCacheDir = () => {
     },
     pruneIntermediates = async nmDir => {
         let deleted = 0;
-        const walk = d => {
-            for (const f of fs.readdirSync(d, { withFileTypes: true })) {
-                const full = path.join(d, f.name);
-                if (f.isDirectory()) walk(full);
-                else if (f.name.endsWith('.orig')) try { fs.unlinkSync(full), deleted++; } catch { }
-            }
-        };
+        const MID_RE =
+            /\.(vcxproj|vcxproj\.filters|tlog|iobj|ipdb|exp|lib|obj|recipe|lastbuildstate|pdb|nativecodeanalysis\.xml)$/i,
+            walk = d => {
+                for (const f of fs.readdirSync(d, { withFileTypes: true })) {
+                    const full = path.join(d, f.name);
+                    if (f.isDirectory()) walk(full);
+                    else if (f.name.endsWith('.orig') || MID_RE.test(f.name)) try { fs.unlinkSync(full), deleted++; } catch { }
+                }
+            };
         walk(nmDir);
         return deleted;
     },
     applyFilesRules = async nmDir => {
         let deleted = 0;
-        // 1) 删顶层 node 假包（npm 上名为 node 的包,仅提供 node.exe,运行时不需要）
+        // 1) 删顶层 node 假包(npm 上名为 node 的包,仅提供 node.exe,运行时不需要)
         const LICENSE_RE = /^licen[sc]e/i, TS_RE = /\.(ts|cts|mts)$/, nodePkg = path.join(nmDir, 'node');
         if (fs.existsSync(nodePkg)) try { fs.rmSync(nodePkg, { recursive: true, force: true }), deleted++; } catch { }
 
@@ -675,17 +677,15 @@ const getElectronCacheDir = () => {
         walk(nmDir);
 
         const cleanEmpty = d => {
-            for (const e of fs.readdirSync(d, { withFileTypes: true }))
-                if (e.isDirectory()) cleanEmpty(path.join(d, e.name));
+            for (const e of fs.readdirSync(d, { withFileTypes: true })) if (e.isDirectory()) cleanEmpty(path.join(d, e.name));
             if (d !== nmDir) try { if (fs.readdirSync(d).length === 0) fs.rmdirSync(d), deleted++; } catch { }
         };
         cleanEmpty(nmDir);
         return deleted;
     };
 
-// ==================== 导出函数 ====================
 /**
- * 标记快照 verified=true（构建全流程成功后由 build.js 调用）
+ * 标记快照 verified=true(构建全流程成功后由 build.js 调用)
  * >查看定义:@see {@link markVerified}
  * @param {string} tempDir 临时构建目录
  * @returns {Promise<void>}
@@ -704,8 +704,8 @@ const markVerified = async tempDir => {
  * @param {string} tempDir 临时构建目录
  * @param {object} [config] 优化配置
  * @param {string[]} [config.exclude] 排除的包名列表
- * @param {boolean} [config.npmRebuild] 用户是否开启原生模块重编译（为真时保留编译必需文件）
- * @returns {Promise<object>} 各阶段统计（merged / cleared / platform / devFiles / intermediates / filesRules）
+ * @param {boolean} [config.npmRebuild] 用户是否开启原生模块重编译(为真时保留编译必需文件)
+ * @returns {Promise<object>} 各阶段统计(merged / cleared / platform / devFiles / intermediates / filesRules)
  */
 const optimizeNodeModules = async (tempDir, config = {}) => {
     const excludePkgs = new Set(config.exclude || []), nmDir = path.join(tempDir, NM_DIR),
@@ -718,14 +718,14 @@ const optimizeNodeModules = async (tempDir, config = {}) => {
     await clearVerified(tempDir);  // 执行优化前清 verified,构建成功后再由 build.js 写回 true
     const t0 = Date.now();
     try {
-        // 阶段1: 清空资源（跳过 js，留待合并阶段处理）
+        // 阶段1: 清空资源(跳过 js,留待合并阶段处理)
         console.log(chalk.cyan('  [1/6] 清空复制到项目根的资源...'));
         const c = await clearResources(nmDir, excludePkgs);
-        console.log(chalk.green(`    清空 ${c} 个文件（js 文件保留，留待合并阶段处理）`));
+        console.log(chalk.green(`    清空 ${c} 个文件(js 文件保留,留待合并阶段处理)`));
 
         // 阶段2: 合并
         console.log(chalk.cyan('  [2/6] 合并 JS...'));
-        const m = await mergeAll(nmDir, excludePkgs, npmRebuild);
+        const m = await mergeAll(nmDir, excludePkgs);
         console.log(chalk.green(`    合并 ${m.merged} 包,跳过 ${m.skipped},删 ${m.totalDeleted} 个 JS`));
 
         // 阶段3: 清平台二进制
@@ -735,7 +735,7 @@ const optimizeNodeModules = async (tempDir, config = {}) => {
 
         // 阶段4: 清开发文件
         console.log(chalk.cyan('  [4/6] 清理开发文件...'));
-        const d = await pruneDevFiles(nmDir, npmRebuild);
+        const d = await pruneDevFiles(nmDir);
         console.log(chalk.green(`    清理 ${d} 个文件`));
 
         // 阶段5: 清中间产物
@@ -743,12 +743,12 @@ const optimizeNodeModules = async (tempDir, config = {}) => {
         const i = await pruneIntermediates(nmDir);
         console.log(chalk.green(`    清理 ${i} 个文件`));
 
-        // 阶段6: 清除不参与运行的文件（与 build.js 的 files 数组对齐）
+        // 阶段6: 清除不参与运行的文件(与 build.js 的 files 数组对齐)
         console.log(chalk.cyan('  [6/6] 清除不参与运行的文件和空目录...'));
         const fr = await applyFilesRules(nmDir);
         console.log(chalk.green(`    清理 ${fr} 项`));
 
-        await writeSnapshotFlags(tempDir);   // 写 platform/arch/version,同时 verified=false
+        await writeSnapshotFlags(tempDir, npmRebuild);   // 写 platform/arch/version,同时 verified=false
         const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
         console.log(chalk.green(`[信息] 优化完成,耗时 ${elapsed}s`));
 
@@ -760,7 +760,7 @@ const optimizeNodeModules = async (tempDir, config = {}) => {
     }
 };
 /**
- * 当前优化文件的 SHA256 前 16 位（缓存指纹:优化代码一改,缓存自动失效）
+ * 当前优化文件的 SHA256 前 16 位(缓存指纹:优化代码一改,缓存自动失效)
  * >查看定义:@see {@link SELF_HASH}
  */
 const SELF_HASH = (() => {
@@ -769,6 +769,7 @@ const SELF_HASH = (() => {
         return require('crypto').createHash('sha256').update(src).digest('hex').slice(0, 16);
     } catch { return 'unknown'; }
 })();
+
 
 export {
     CUR_ARCH, CUR_PLAT, clearVerified, findFileRecursive, getElectronCacheDir, markVerified, optimizeNodeModules,

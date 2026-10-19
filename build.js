@@ -63,9 +63,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
         return absPath;
     },
     /**
-     * 清理 Electron 缓存：只保留当前版本+平台的 zip 及其同名解压目录，其余（其它版本、其它平台）一律删除
+     * 清理 Electron 缓存:只保留当前版本+平台的 zip 及其同名解压目录,其余(其它版本,其它平台)一律删除
      * @param {string} cacheDir Electron 缓存根目录
-     * @param {string} keepZip 保留的 zip 文件名（如 electron-v44.5.1-win32-x64.zip）
+     * @param {string} keepZip 保留的 zip 文件名(如 electron-v44.5.1-win32-x64.zip)
      * @returns {number} 清理的条目数
      */
     cleanupElectronCache = (cacheDir, keepZip) => {
@@ -97,9 +97,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
         return n;
     },
     /**
-     * 确保 Electron 已解压：缓存中有当前版本的 zip 时，解压到 zip 同名目录（去 .zip 后缀）；已解压则复用
+     * 确保 Electron 已解压:缓存中有当前版本的 zip 时,解压到 zip 同名目录(去 .zip 后缀);已解压则复用
      * @param {string} electronVersion Electron 版本号
-     * @returns {Promise<string|null>} 已解压目录的绝对路径；无 zip 或失败返回 null
+     * @returns {Promise<string|null>} 已解压目录的绝对路径;无 zip 或失败返回 null
      */
     ensureElectronUnpacked = async electronVersion => {
         try {
@@ -112,7 +112,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
                 exeRel = { win32: 'electron.exe', darwin: 'Electron.app/Contents/MacOS/Electron', linux: 'electron' }[CUR_PLAT];
             let ready = exeRel && (await fs.pathExists(path.join(unzipDir, exeRel)));
             if (!ready) {
-                console.log(chalk.gray('[信息] 正在解压 Electron 到缓存目录（首次，之后复用）...'));
+                console.log(chalk.gray('[信息] 正在解压 Electron 到缓存目录(首次,之后复用)...'));
                 new AdmZip(zipPath).extractAllTo(unzipDir, true);
                 ready = exeRel && (await fs.pathExists(path.join(unzipDir, exeRel)));
             }
@@ -122,7 +122,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
                 return unzipDir;
             }
         } catch (err) {
-            console.warn(chalk.yellow('[警告] Electron 解压失败，将走默认流程: ' + err.message));
+            console.warn(chalk.yellow('[警告] Electron 解压失败,将走默认流程: ' + err.message));
         }
         return null;
     };
@@ -291,7 +291,7 @@ const build = async () => {
     }, {}), extraFields = ['engines', 'overrides', 'resolutions'].reduce((acc, key) => {
         if (pkgJson[key]) acc[key] = pkgJson[key];
         return acc;
-    }, {}), snapshotData = { deps: sortedDeps, extra: extraFields }, snapshotPath = path.join(tempDir, snapshotFile),
+    }, {}), npmRebuildCfg = buildConfig.nativeModules?.npmRebuild === true, snapshotData = { deps: sortedDeps, extra: extraFields }, snapshotPath = path.join(tempDir, snapshotFile),
         thisOptimize = optimizeCfg === undefined || optimizeCfg.enabled !== false;
     // 判断:是否重装 / 是否优化
     let shouldInstall = true, shouldOptimize = thisOptimize, reasons = [];
@@ -300,25 +300,33 @@ const build = async () => {
             depsSame = JSON.stringify({ deps: old.deps, extra: old.extra }) === JSON.stringify(snapshotData),
             verifiedOk = old.verified === true, envSame = old.platform === CUR_PLAT && old.arch === CUR_ARCH,
             lastOptimized = old.optimized !== false, selfHashSame = old.optimizeHash === SELF_HASH,
-            nmExists = await fs.pathExists(path.join(tempDir, 'node_modules'));
+            nmExists = await fs.pathExists(path.join(tempDir, 'node_modules')),
+            npmRebuildOld = old.npmRebuild === true,
+            npmRebuildOffToOn = thisOptimize && !npmRebuildOld && npmRebuildCfg;
         if (!depsSame) reasons.push('依赖清单已变化');
         if (!verifiedOk) reasons.push('上次构建未完成');
         if (!envSame) reasons.push('运行环境已变化');
         if (!nmExists) reasons.push('缓存目录缺失');
         if (lastOptimized && !thisOptimize) reasons.push('优化已由开启转为关闭');
         if (thisOptimize && !selfHashSame && lastOptimized) reasons.push('优化程序已更新');
+        if (npmRebuildOffToOn) reasons.push('原生模块编译已开启(需重装还原编译文件)');
         if (reasons.length > 0) {
             shouldInstall = true, shouldOptimize = thisOptimize;
-            console.log(chalk.gray('[信息] 需要重新安装依赖(原因: ' + reasons.join(', ') + ')'));
+            console.log(chalk.gray('[信息] ' + (thisOptimize ? '重新安装依赖+优化' :
+                '重新安装依赖') + '(原因: ' + reasons.join(', ') + ')'));
         }
-        else if (thisOptimize && !lastOptimized)
-            shouldInstall = false, shouldOptimize = true, console.log(chalk.gray('[信息] 依赖与环境未变化,仅需优化'));
+        else if (thisOptimize && !lastOptimized) {
+            shouldInstall = false, shouldOptimize = true;
+            console.log(chalk.gray('[信息] 依赖与环境未变化,仅需优化(优化: 关→开' + (npmRebuildOld && !npmRebuildCfg ?
+                ', 原生编译: 开→关' : '') + ')'));
+        }
         else {
             shouldInstall = false, shouldOptimize = false;
-            console.log(chalk.gray('[信息] 依赖与环境未变化,跳过安装与优化')), await clearVerified(tempDir);
+            console.log(chalk.gray('[信息] 跳过安装与优化' + (npmRebuildOld && !npmRebuildCfg ?
+                '(原生编译: 开→关,其它无变化且编译文件已在上次优化中清理)' : ''))), await clearVerified(tempDir);
         }
     }
-    else console.log(chalk.gray('[信息] 需要重新安装依赖(原因: 缓存快照缺失)'));
+    else console.log(chalk.gray('[信息] ' + (thisOptimize ? '重新安装依赖+优化' : '重新安装依赖') + '(原因: 缓存快照缺失)'));
 
     if (shouldInstall) {
         console.log(chalk.cyan('[信息] 正在安装依赖...')), await fs.remove(path.join(tempDir, 'node_modules'));
@@ -328,21 +336,37 @@ const build = async () => {
             cwd: tempDir, stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' }
         });
         await fs.writeJson(snapshotPath, {
-            ...snapshotData, optimized: false, platform: CUR_PLAT, arch: CUR_ARCH, optimizeHash: SELF_HASH, verified: false
+            ...snapshotData, npmRebuild: npmRebuildCfg, optimized: false, platform: CUR_PLAT,
+            arch: CUR_ARCH, optimizeHash: SELF_HASH, verified: false
         }, { spaces: 2 });
-        console.log(chalk.cyan('[信息] 依赖安装完成'));
+        console.log(chalk.green('[信息] 依赖安装完成'));
     }
 
     // 获取 electron 版本
     let electronVersion;
     try {
         const ePkg = await fs.readJson(require.resolve('electron/package.json'));
-        electronVersion = ePkg.version, console.log(chalk.cyan('[信息] Electron 版本: ' + electronVersion));
+        electronVersion = ePkg.version, console.log(chalk.hex('#B8860B')('[信息] Electron 版本: ' + electronVersion));
     } catch (err) {
         console.error(chalk.red('[错误] 未找到 electron 包,请先安装;')), process.exit(1);
     }
-    // 确保 Electron 已解压到缓存目录（优化器读取、electron-builder 复用）
+    // 确保 Electron 已解压到缓存目录(优化器读取,electron-builder 复用)
     const electronDist = await ensureElectronUnpacked(electronVersion);
+
+    // 编译原生模块(前移至优化之前)
+    if (npmRebuildCfg && shouldInstall) {
+        console.log(chalk.cyan('[信息] 正在编译原生模块...'));
+        try {
+            await execa('npx', ['--no-install', 'electron-rebuild', '--module-dir', tempDir, '--version',
+                electronVersion, '--arch', CUR_ARCH, '--force', '--types', 'prod,optional'], {
+                cwd: process.cwd(), stdio: process.env.OPTIMIZE_DEBUG ? 'inherit' : 'pipe'
+            });
+            console.log(chalk.green('[信息] 原生模块编译完成'));
+        } catch (err) {
+            console.error(chalk.red('[错误] 原生模块编译失败:'), err), process.exit(1);
+        }
+    }
+
 
     // ==== node_modules 优化 ====
     if (shouldOptimize) {
@@ -352,9 +376,9 @@ const build = async () => {
                 ...(optimizeCfg || {}), npmRebuild: buildConfig.nativeModules?.npmRebuild === true
             });
         } catch (err) {
-            console.error(chalk.red("[错误] node_modules 优化失败：" + err.message));
+            console.error(chalk.red("[错误] node_modules 优化失败:" + err.message));
             console.error(chalk.yellow("[提示] 可在 desktopAppConfig.js 中设置 optimize: { enabled: false } 关闭优化,"));
-            console.error(chalk.yellow("       或用 optimize: { exclude: [\"包名\"] } 排除问题包。")), process.exit(1);
+            console.error(chalk.yellow("       或用 optimize: { exclude: [\"包名\"] } 排除问题包.")), process.exit(1);
         }
     }
     // 更新 allowScripts
@@ -380,7 +404,8 @@ const build = async () => {
             ...(electronDist ? { electronDist } : {}), productName: appName, ...restBuild
         };
     configObj.directories = { ...(configObj.directories || {}), output };
-    // 平台特定配置（映射处理）
+    configObj.nativeModules = { ...(configObj.nativeModules || {}), npmRebuild: false };
+    // 平台特定配置(映射处理)
     const platform = CUR_PLAT,
         platformHandlers = {
             win32: (cfg, userWinCfg) => {
@@ -452,7 +477,7 @@ const build = async () => {
         else configObj[field] = absHookPath;
     }
     await fs.writeJson(configFile, configObj, { spaces: 2 });
-    // 构建可执行文件（electron-builder）
+    // 构建可执行文件(electron-builder)
     let retries = 2, lastError = null, success = false, ebOutput = [];
     console.log(chalk.cyan('[信息] 正在打包应用...'));
     while (retries > 0) {
@@ -635,7 +660,7 @@ const build = async () => {
                   if CurUninstallStep = usPostUninstall then
                   begin
                     Exec('taskkill', '/f /im ' + '${exeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-                    mres := MsgBox('是否删除用户数据？', mbConfirmation, MB_YESNO or MB_DEFBUTTON1);
+                    mres := MsgBox('是否删除用户数据?', mbConfirmation, MB_YESNO or MB_DEFBUTTON1);
                     if mres = IDYES then
                     begin
                       userDataDir := ExpandConstant('{userappdata}') + '\\' + '${appName}';
@@ -707,7 +732,7 @@ const build = async () => {
 
                 if (!(await fs.pathExists(isccExe) && await fs.pathExists(versionFile))) throw new Error('解压后缺少关键文件');
                 await fs.remove(backupDir).catch(() => { });
-                return console.log(chalk.green(`[信息]最新版:${latestTag} 安装成功,继续构建...`)), isccExe;
+                return console.log(chalk.green(`[信息] 最新版:${latestTag} 安装成功,继续构建...`)), isccExe;
             } catch (err) {
                 console.error(chalk.red(`[错误] 更新失败: ${err.message}`)), await fs.remove(cacheDir).catch(() => { });
                 if (cacheComplete) {
@@ -719,7 +744,7 @@ const build = async () => {
         }, targetDir = path.resolve(process.cwd(), outputDir);
     // 平台打包
     if (platform === 'win32') {
-        console.log(chalk.gray('正在执行 Inno Setup 编译(时间2~5分钟,请稍作休息)...'));
+        console.log(chalk.gray('[信息] 正在执行 Inno Setup 编译(时间2~5分钟,请稍作休息)...'));
         if (!(await fs.pathExists(appDir))) console.error(chalk.red('[错误] 未找到 win-unpacked 目录;')), process.exit(1);
         const exeFiles = await fs.readdir(appDir), exeName = exeFiles.find(f => f.endsWith('.exe'));
         if (!exeName) console.error(chalk.red('[错误] 未找到可执行文件;')), process.exit(1);
@@ -795,7 +820,7 @@ const build = async () => {
 
         await copyArtifacts(sourceDir, targetDir, ['.exe'], excludeOutputs);
         await markVerified(tempDir);
-        console.log(chalk.green('[成功] 构建完成！安装包位于: ' + targetDir));
+        console.log(chalk.green('[成功] 构建完成!安装包位于: ' + targetDir));
     } else {
         // macOS / Linux
         let patterns = [];
@@ -807,7 +832,7 @@ const build = async () => {
             patterns = targets.map(t => (t.startsWith('.') ? t : `.${t}`));
         }
         const copied = await copyArtifacts(appDir, targetDir, patterns, excludeOutputs);
-        if (copied) { await markVerified(tempDir); console.log(chalk.green('[成功] 构建完成！安装包位于: ' + targetDir)); }
+        if (copied) { await markVerified(tempDir); console.log(chalk.green('[成功] 构建完成!安装包位于: ' + targetDir)); }
         else console.warn(chalk.yellow('[警告] 未找到构建产物;'));
     }
 };
@@ -819,7 +844,7 @@ const runCLI = async () => {
     const command = process.argv[2];
     if (!command || command === 'help' || command === '--help' || command === '-h')
         console.log(`用法:先配置 desktopAppConfig.js 文件,然后运行->desktop-builder build 指令构建桌面应用程序`),
-            console.log(`     加 --debug 可显示详细日志(优化阶段每个包的处理、electron-builder 完整输出)`), process.exit(0);
+            console.log(`     加 --debug 可显示详细日志(优化阶段每个包的处理,electron-builder 完整输出)`), process.exit(0);
     if (command === 'build') {
         if (process.argv.includes('--debug')) process.env.OPTIMIZE_DEBUG = '1';
         await build();

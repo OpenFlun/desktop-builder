@@ -15,10 +15,10 @@ export default {
 	enableLogging: false,                // 是否启用日志文件记录,默认关闭
 
 	// node_modules 优化:合并 JS + 清空已复制到项目根的资源 + 清平台二进制 + 清开发文件,加速冷启动
-	// 默认开启。若构建或运行异常,可按下述方式关闭或排除问题包
+	// 默认开启.若构建或运行异常,可按下述方式关闭或排除问题包
 	optimize: {
-		enabled: true,                     // 是否启用（默认 true）
-		// exclude: ['包名'],              // 排除优化时异常或不想优化的包（默认空）
+		enabled: true,                     // 是否启用(默认 true)
+		// exclude: ['包名'],              // 排除优化时异常或不想优化的包(默认空)
 	},
 	// 窗口配置
 	window: {
@@ -32,19 +32,19 @@ export default {
 		fullscreenable: true,             // 是否允许全屏
 		alwaysOnTop: false,               // 是否始终置顶
 		frame: true,                      // 是否显示标题栏
-		titleBarStyle: 'default',         // 标题栏样式: default/hidden/hiddenInset（仅 macOS）
+		titleBarStyle: 'default',         // 标题栏样式: default/hidden/hiddenInset(仅 macOS)
 		backgroundColor: '#5127ce',     // 加载时的背景色
 		show: false,                      // false=等页面渲染完再显示,防白屏
 		webPreferences: {
-			// 注意：nodeIntegration、contextIsolation、sandbox 将被强制覆盖.此处配置无效
-			// 其他属性（如 plugins, webSecurity, enableWebAuthn 等）仍然生效
+			// 注意:nodeIntegration,contextIsolation,sandbox 将被强制覆盖.此处配置无效
+			// 其他属性(如 plugins, webSecurity, enableWebAuthn 等)仍然生效
 			nodeIntegration: false,        // 此值无效,实际强制为 true
 			contextIsolation: true,        // 此值无效,实际强制为 false
 			sandbox: false,                // 此值无效,实际强制为 false
 		},
 	},
 
-	// 菜单配置（可自由修改语言和结构）
+	// 菜单配置(可自由修改语言和结构)
 	menu: [
 		{
 			label: '文件',
@@ -114,10 +114,10 @@ export default {
 
 	// 打包配置
 	build: {
-		appId: 'com.example.app',     	   // 应用唯一标识（反向域名格式）
+		appId: 'com.example.app',     	   // 应用唯一标识(反向域名格式)
 		outputDir: './dist',               // 安装包输出目录
-		publisher: null,                   // 发布者名称（用于安装程序信息,默认从 package.json 读取 author）
-		shortcutName: null,       		   // 快捷方式名称（默认使用 appName）
+		publisher: null,                   // 发布者名称(用于安装程序信息,默认从 package.json 读取 author)
+		shortcutName: null,       		   // 快捷方式名称(默认使用 appName)
 		// electron-builder v27 变更:原生模块选项统一收拢到 nativeModules 对象下
 		nativeModules: {
 			npmRebuild: false               // 默认不重编译原生模块,减少构建时间
@@ -125,8 +125,8 @@ export default {
 
 		// Win 平台配置
 		win: {
-			icon: './build/icon.png',      // 应用图标（.png 格式）,用于快捷方式和文件图标,建议 512x512 PNG
-			// 其他可选：publisherName 等
+			icon: './build/icon.png',      // 应用图标(.png 格式),用于快捷方式和文件图标,建议 512x512 PNG
+			// 其他可选:publisherName 等
 			// 应用本体签名(electron-builder v27: 统一移入 sign 对象,必须带 type 字段)
 			// 签名对象:打包进安装包的应用可执行文件(与下方 inno 的签名字段职责不同)
 			// 公共说明:如需签名,取消下方注释并按实际填写;certificatePassword 推荐用环境变量 CSC_KEY_PASSWORD 传入
@@ -153,10 +153,10 @@ export default {
 			disableWelcomePage: false,      // true=跳过欢迎页
 			disableDirPage: false,          // true=禁止更改安装路径
 			disableProgramGroupPage: false, // true=禁止选择开始菜单文件夹
-			disableFinishedPage: false,     // true=隐藏“安装完成”页面(安装后直接关闭向导)
-			disableReadyPage: false,        // true=隐藏“准备安装”确认页
+			disableFinishedPage: false,     // true=隐藏"安装完成"页面(安装后直接关闭向导)
+			disableReadyPage: false,        // true=隐藏"准备安装"确认页
 			disableReadyMemo: false,        // true=在准备页不显示设置摘要
-			disableStartupPrompt: false,    // true=禁止启动时显示“是否安装...”的提示框
+			disableStartupPrompt: false,    // true=禁止启动时显示"是否安装..."的提示框
 			showLanguageDialog: true,       // true=显示语言选择对话框
 			flatComponentsList: false,      // true=组件列表使用扁平(无边框)样式
 			showComponentSizes: false,      // true=在组件选择页面显示每个组件的大小
@@ -216,7 +216,7 @@ export default {
 			updateUninstallLogAppName: false, 	   // true=更新卸载日志中的应用名称
 			uninstallable: true,           	   	   // 是否可卸载
 			createUninstallRegKey: true,   	   	   // 是否创建卸载注册表项
-			uninstallDisplayName: '卸载(destApp)', // 在“添加/删除程序”中显示的名称
+			uninstallDisplayName: '卸载(destApp)', // 在"添加/删除程序"中显示的名称
 			uninstallLogMode: 'append',       	   // 卸载日志模式:new / append / overwrite
 			appSupportURL: undefined,      	   	   // 支持网址
 			appUpdatesURL: undefined,      	   	   // 更新网址
@@ -228,8 +228,8 @@ export default {
 			versionInfoDescription: undefined, 	   // 文件描述
 			versionInfoCopyright: undefined, 	   // 版权信息
 			versionInfoCompany: undefined, 		   // 公司名称(默认从 package.json 读取 author)
-			// 安装程序签名（Inno Setup 自身机制）
-			// 签名对象：安装程序 Setup.exe 与卸载程序 unins000.exe（与上方 win.sign 职责不同）
+			// 安装程序签名(Inno Setup 自身机制)
+			// 签名对象:安装程序 Setup.exe 与卸载程序 unins000.exe(与上方 win.sign 职责不同)
 			// 公共说明:signingTool 与 signToolParams 需同时配置才会启用签名,缺少任一则不签名
 			signedUninstaller: false,                  // 是否为卸载程序签名(true=同时对卸载程序 unins000.exe 签名)
 			signingTool: undefined,                    // 签名工具(可填 'signtool.exe' 自动查找,或完整路径如 'C:\\...\\signtool.exe')
@@ -250,7 +250,7 @@ export default {
 
 		// macOS 配置
 		mac: {
-			target: ['zip', 'dmg'],          // 构建目标：dmg / zip / pkg / mas 等
+			target: ['zip', 'dmg'],          // 构建目标:dmg / zip / pkg / mas 等
 			// icon: './build/icon.icns',    // 应用图标(.icns,需自备,建议 512x512)
 			// 公证开关(electron-builder v27 官方规范:位于 mac 下,boolean 类型,不是对象)
 			notarize: false,                 // 显式关闭自动公证;设为 true 时本工具会在构建前检查公证凭据;不配置则透传给 electron-builder
@@ -277,23 +277,23 @@ export default {
 		dmg: {
 			iconSize: 80,                            // 图标大小
 			window: { width: 540, height: 380 }, // DMG 窗口尺寸
-			// 以下为增强选项（可选）
-			// background: './build/background.png',    // DMG 背景图片（建议 PNG） 540×380
+			// 以下为增强选项(可选)
+			// background: './build/background.png',    // DMG 背景图片(建议 PNG) 540×380
 			// backgroundColor: '#5127ce',            // 无背景图时的背景色
-			// icon: './build/icon.icns',               // DMG 卷宗图标（显示在 Finder 侧边栏）
+			// icon: './build/icon.icns',               // DMG 卷宗图标(显示在 Finder 侧边栏)
 			// title: '${productName} ${version}',      // 挂载后显示的卷宗名称
-			// format: 'UDZO',                          // 压缩格式（UDZO/ULFO/UDBZ 等）
+			// format: 'UDZO',                          // 压缩格式(UDZO/ULFO/UDBZ 等)
 			// contents: [                              // 自定义窗口内图标布局
 			//   { x: 130, y: 220, type: 'file' },
 			//   { x: 410, y: 220, type: 'link', path: '/Applications' }
 			// ]
 		},
 
-		// ----- Linux 配置（增强）-----
+		// ----- Linux 配置(增强)-----
 		linux: {
-			target: ['AppImage', 'deb'],     // 构建目标：AppImage / deb / rpm / snap / flatpak 等
-			category: 'Development',         // 系统菜单分类（如 Utility, Network, Development 等）
-			// Linux 图标无需显式配置，只需在 ./build 目录下提供符合尺寸和格式的默认图标 icon.png 即可（建议 512x512 PNG）
+			target: ['AppImage', 'deb'],     // 构建目标:AppImage / deb / rpm / snap / flatpak 等
+			category: 'Development',         // 系统菜单分类(如 Utility, Network, Development 等)
+			// Linux 图标无需显式配置,只需在 ./build 目录下提供符合尺寸和格式的默认图标 icon.png 即可(建议 512x512 PNG)
 			// 以下为可选高级字段
 			// description: '完整的应用描述',   // 长描述
 			// synopsis: '简短描述',           // 短描述
@@ -315,7 +315,7 @@ export default {
 			// 代码签名:GPG 签名(deb 通过 dpkg-sig,AppImage 通过 appimagetool)
 			// 公共说明:electron-builder v27 的 linux 配置下没有 sign 字段;
 			//           GPG 签名通过环境变量 GPG_PRIVATE_KEY / GPG_KEY_PASSPHRASE 触发
-			//           使用前请确保宿主机已安装 dpkg-sig、appimagetool 及对应的 GPG 密钥
+			//           使用前请确保宿主机已安装 dpkg-sig,appimagetool 及对应的 GPG 密钥
 			// 兼容说明:本工具额外接受 linux.sign 作为便利字段,构建时会自动剥离
 			//           并转换为上述环境变量(不写入 builder.json)
 			// 校验说明:gpgPrivateKey 与 gpgKeyPassphrase 必须同时配置,只配其一构建前报错退出
@@ -324,7 +324,7 @@ export default {
 			//     gpgKeyPassphrase: process.env.GPG_KEY_PASSPHRASE, // GPG 密钥密码
 			// },
 		},
-		// 特定格式的额外配置（可选）
+		// 特定格式的额外配置(可选)
 		// appImage: {
 		//   systemIntegration: 'doNotAsk'  // 是否询问系统集成
 		// },
@@ -345,7 +345,7 @@ export default {
 		'@flun/webauthn-server': true
 	},
 
-	// 排除文件/目录（相对于项目根目录,支持 glob 模式）
+	// 排除文件/目录(相对于项目根目录,支持 glob 模式)
 	excludeFiles: [
 		'.vscode/',
 		'.idea/',
@@ -364,15 +364,15 @@ export default {
 		'*.log'
 	],
 
-	// 排除依赖包（从最终依赖列表中移除,不会安装）
+	// 排除依赖包(从最终依赖列表中移除,不会安装)
 	excludeDependencies: [
 		'@flun/desktop-builder'
 	],
 
 	/**
-	 * 排除输出文件（在最终输出目录中排除某些安装包文件）
-	 * 例如 *.blockmap、latest.yml 等;
-	 * 注意：此配置仅在复制最终安装包到输出目录时生效,不影响构建过程;
+	 * 排除输出文件(在最终输出目录中排除某些安装包文件)
+	 * 例如 *.blockmap,latest.yml 等;
+	 * 注意:此配置仅在复制最终安装包到输出目录时生效,不影响构建过程;
 	 */
 	excludeOutputs: [
 		'*.blockmap',
