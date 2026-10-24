@@ -11,9 +11,7 @@
   "bin": {
     "desktop-builder": "./index.js"
   },
-  "scripts": {
-    "postinstall": "node copy-files.js 2>&1"
-  },
+  "scripts": {},
   "keywords": [
     "electron",
     "desktop",
