@@ -232,7 +232,8 @@ export default {
 			// 签名对象:安装程序 Setup.exe 与卸载程序 unins000.exe(与上方 win.sign 职责不同)
 			// 公共说明:signingTool 与 signToolParams 需同时配置才会启用签名,缺少任一则不签名
 			signedUninstaller: false,                  // 是否为卸载程序签名(true=同时对卸载程序 unins000.exe 签名)
-			signingTool: undefined,                    // 签名工具(可填 'signtool.exe' 自动查找,或完整路径如 'C:\\...\\signtool.exe')
+                   signingTool: undefined,
+                   // 签名工具(可填 'signtool.exe' 自动查找,或完整路径如 'C:\...\signtool.exe')
 			// 签名参数(对象格式,仅需填 certificateFile/certificatePassword/algorithm 三项)
 			// signToolParams: {                       // 示例:三项填好后自动拼成 signtool 命令行
 			//     certificateFile: './build/cert.pfx',  // 证书文件路径(.pfx)
@@ -253,7 +254,8 @@ export default {
 			target: ['zip', 'dmg'],          // 构建目标:dmg / zip / pkg / mas 等
 			// icon: './build/icon.icns',    // 应用图标(.icns,需自备,建议 512x512)
 			// 公证开关(electron-builder v27 官方规范:位于 mac 下,boolean 类型,不是对象)
-			notarize: false,                 // 显式关闭自动公证;设为 true 时本工具会在构建前检查公证凭据;不配置则透传给 electron-builder
+                   notarize: false,
+                   // 显式关闭自动公证;设为 true 时本工具会在构建前检查公证凭据;不配置则透传给 electron-builder
 			// 代码签名配置(electron-builder v27 官方规范:签名选项统一收拢到 sign 对象)
 			// 公共说明:identity 留空则自动读 CSC_NAME;证书文件与密码必须通过环境变量
 			//           CSC_LINK / CSC_KEY_PASSWORD 传入,不写在配置里

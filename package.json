@@ -1,7 +1,7 @@
 {
   "name": "@flun/desktop-builder",
   "version": "6.4.0",
-  "description": "将任意 Node.js 网站一键打包为当前桌面应用('win', 'mac', 'linux')（基于 Electron）,支持高度自定义配置;",
+  "description": "将任意 Node.js 网站一键打包为当前桌面应用('win', 'mac', 'linux')(基于 Electron),支持高度自定义配置;",
   "type": "module",
   "types": "index.d.ts",
   "exports": {
@@ -52,9 +52,9 @@
   ],
   "dependencies": {
     "adm-zip": "^0.6.1",
-    "electron": "^44.9.0",
+    "electron": "^45.0.0",
     "electron-builder": "^27.0.0-alpha.9",
-    "execa": "^10.1.1",
+    "execa": "^10.2.1",
     "fs-extra": "^11.4.1",
     "chalk": "^6.0.1",
     "glob": "13.0.6",
@@ -69,6 +69,6 @@
   "electronNodeFallback": {
     "version": "24",
     "queryUrl": "https://releases.electronjs.org/schedule",
-    "note": "升级后访问 queryUrl 获取 node 版本，仅需修改此 version 字段"
+    "note": "升级后访问 queryUrl 获取 node 版本,仅需修改此 version 字段"
   }
 }

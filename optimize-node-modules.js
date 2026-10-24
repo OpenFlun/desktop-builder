@@ -26,7 +26,10 @@ const CUR_PLAT = process.platform, require = createRequire(import.meta.url),
         win32: ['win32', 'win64', 'windows'], darwin: ['darwin', 'macos', 'osx', 'mac'],
         linux: ['linux'], freebsd: ['freebsd'], openbsd: ['openbsd'], sunos: ['sunos', 'solaris'], aix: ['aix']
     }, myPlat = PLATFORM_MAP[CUR_PLAT] || [CUR_PLAT],
-    ARCH_MAP = { x64: ['x64', 'x86_64', 'amd64'], arm64: ['arm64', 'aarch64'], ia32: ['ia32', 'x86', 'i386'], arm: ['arm'] },
+    ARCH_MAP = {
+        x64: ['x64', 'x86_64', 'amd64'], arm64: ['arm64', 'aarch64'],
+        ia32: ['ia32', 'x86', 'i386'], arm: ['arm']
+    },
     myArch = ARCH_MAP[CUR_ARCH] || [CUR_ARCH], INDEX_FILES = ['index.js', 'index.cjs', 'index.mjs'];
 // ==================== 通用工具 ====================
 /**
@@ -629,7 +632,8 @@ const getElectronCacheDir = () => {
                 for (const f of fs.readdirSync(d, { withFileTypes: true })) {
                     const full = path.join(d, f.name);
                     if (f.isDirectory()) walk(full);
-                    else if (f.name.endsWith('.orig') || MID_RE.test(f.name)) try { fs.unlinkSync(full), deleted++; } catch { }
+                    else if (f.name.endsWith('.orig') || MID_RE.test(f.name))
+                        try { fs.unlinkSync(full), deleted++; } catch { }
                 }
             };
         walk(nmDir);
@@ -677,7 +681,8 @@ const getElectronCacheDir = () => {
         walk(nmDir);
 
         const cleanEmpty = d => {
-            for (const e of fs.readdirSync(d, { withFileTypes: true })) if (e.isDirectory()) cleanEmpty(path.join(d, e.name));
+            for (const e of fs.readdirSync(d, { withFileTypes: true }))
+                if (e.isDirectory()) cleanEmpty(path.join(d, e.name));
             if (d !== nmDir) try { if (fs.readdirSync(d).length === 0) fs.rmdirSync(d), deleted++; } catch { }
         };
         cleanEmpty(nmDir);

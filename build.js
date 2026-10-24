@@ -79,7 +79,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
                         if (/^electron-v/i.test(e.name) && e.name !== keepDir) toDel.push({ p: full, dir: true });
                         else if (e.name !== keepDir) walk(full);
                     }
-                    else if (/^electron-v.*\.zip$/i.test(e.name) && e.name !== keepZip) toDel.push({ p: full, dir: false });
+                    else if (/^electron-v.*\.zip$/i.test(e.name) && e.name !== keepZip)
+                        toDel.push({ p: full, dir: false });
                 }
             };
         walk(cacheDir);
@@ -109,7 +110,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
                 zipPath = findFileRecursive(cacheDir, zipName);
             if (!zipPath) return null;
             const unzipDir = zipPath.replace(/\.zip$/i, ''),
-                exeRel = { win32: 'electron.exe', darwin: 'Electron.app/Contents/MacOS/Electron', linux: 'electron' }[CUR_PLAT];
+                exeRel = {
+                    win32: 'electron.exe', darwin: 'Electron.app/Contents/MacOS/Electron',
+                    linux: 'electron'
+                }[CUR_PLAT];
             let ready = exeRel && (await fs.pathExists(path.join(unzipDir, exeRel)));
             if (!ready) {
                 console.log(chalk.gray('[信息] 正在解压 Electron 到缓存目录(首次,之后复用)...'));
@@ -133,26 +137,33 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
 const build = async () => {
     // 公共初始化
     const origPkgPath = path.join(process.cwd(), 'package.json');
-    if (!(await fs.pathExists(origPkgPath))) console.warn(chalk.yellow('[错误] 请配置 package.json 文件')), process.exit(1);
+    if (!(await fs.pathExists(origPkgPath)))
+        console.warn(chalk.yellow('[错误] 请配置 package.json 文件')), process.exit(1);
     const configPath = path.join(process.cwd(), 'desktopAppConfig.js');
-    if (!(await fs.pathExists(configPath))) console.error(chalk.red('[错误] desktopAppConfig.js 文件缺失')), process.exit(1);
+    if (!(await fs.pathExists(configPath)))
+        console.error(chalk.red('[错误] desktopAppConfig.js 文件缺失')), process.exit(1);
     const configModule = await import(`file://${configPath}?t=${Date.now()}`),
         {
             serverPath, appUrl, appName: userAppName, excludeFiles = [], excludeDependencies = [],
             excludeOutputs = [], enableLogging = false, allowScripts, menu, window: windowConfig = {},
             advanced: userAdvanced = {}, build: buildConfig = {}, optimize: optimizeCfg
         } = configModule.default;
-    if (!serverPath || !appUrl) console.error(chalk.red('[错误] 配置文件缺少必填字段: serverPath, appUrl')), process.exit(1);
+    if (!serverPath || !appUrl)
+        console.error(chalk.red('[错误] 配置文件缺少必填字段: serverPath, appUrl')), process.exit(1);
     // 早期配置校验
     if (optimizeCfg !== undefined && (optimizeCfg === null || typeof optimizeCfg !== "object")) {
-        console.error(chalk.red("[错误] optimize 需为对象,如 { enabled: false } 关闭优化,{ exclude: [\"包名\"] } 排除问题包"));
+        console.error(chalk.red(
+            "[错误] optimize 需为对象,如 { enabled: false } 关闭优化,{ exclude: [\"包名\"] } 排除问题包"
+        ));
         process.exit(1);
     }
     if (CUR_PLAT === 'win32') {
         const winSign = buildConfig.win?.sign;
         if (winSign) {
             if (!winSign.type) {
-                console.error(chalk.red('[错误] build.win.sign.type 必填(electron-builder v27 判别字段,固定为 "signtool")'));
+                console.error(chalk.red(
+                    '[错误] build.win.sign.type 必填(electron-builder v27 判别字段,固定为 "signtool")'
+                ));
                 process.exit(1);
             }
             if (!winSign.certificateFile && !winSign.identity) {
@@ -167,7 +178,9 @@ const build = async () => {
             console.error(chalk.red('[错误] build.inno 的 signingTool 与 signToolParams 必须同时配置'));
             if (hasSigningTool) console.error(chalk.yellow(`[提示] 已配置 signingTool,但缺少 signToolParams(
                     对象格式:certificateFile/certificatePassword/algorithm)`));
-            else console.error(chalk.yellow('[提示] 已配置 signToolParams,但缺少 signingTool(如 signtool.exe 或完整路径)'));
+            else console.error(chalk.yellow(
+                '[提示] 已配置 signToolParams,但缺少 signingTool(如 signtool.exe 或完整路径)'
+            ));
             process.exit(1);
         }
         if (hasSigningTool) {
@@ -197,8 +210,12 @@ const build = async () => {
                 checkGroup = (g, name) => {
                     if (hasAny(g) && !hasAll(g)) {
                         const missing = g.filter(k => !env[k]);
-                        console.error(chalk.red(`[错误] 公证凭据不完整(方式:${name}),缺少环境变量: ${missing.join(', ')}`));
-                        console.error(chalk.yellow('[提示] 设置凭据后才会自动公证;如不需要公证,请在build.mac中显式设置notarize: false'));
+                        console.error(chalk.red(
+                            `[错误] 公证凭据不完整(方式:${name}),缺少环境变量: ${missing.join(', ')}`
+                        ));
+                        console.error(chalk.yellow(
+                            '[提示] 设置凭据后才会自动公证;如不需要公证,请在build.mac中显式设置notarize: false'
+                        ));
                         process.exit(1);
                     }
                 };
@@ -272,7 +289,8 @@ const build = async () => {
             return value;
         });
     }
-    const { autoStartServer = true, autoKillServer = true } = userAdvanced, rootPkgPath = path.join(tempDir, 'package.json'),
+    const { autoStartServer = true, autoKillServer = true } = userAdvanced,
+        rootPkgPath = path.join(tempDir, 'package.json'),
         serverRelPath = path.basename(serverPath), mainJs = mainTem.replace('__APP_URL__', JSON.stringify(appUrl))
             .replace('__WINDOW_CONFIG__', JSON.stringify(windowConfig))
             .replace('__SERVER_PATH__', JSON.stringify(serverRelPath))
@@ -283,7 +301,10 @@ const build = async () => {
     if (pkgJson.dependencies) for (const ex of excludeDependencies) delete pkgJson.dependencies[ex];
     else pkgJson.dependencies = {};
     delete pkgJson.devDependencies, pkgJson.main = 'main.mjs', pkgJson.description = appName;
-    await Promise.all([fs.writeFile(path.join(tempDir, 'main.mjs'), mainJs), fs.writeJson(rootPkgPath, pkgJson, { spaces: 2 })]);
+    await Promise.all([
+        fs.writeFile(path.join(tempDir, 'main.mjs'), mainJs),
+        fs.writeJson(rootPkgPath, pkgJson, { spaces: 2 })
+    ]);
 
     const deps = pkgJson.dependencies || {}, sortedDeps = Object.keys(deps).sort().reduce((acc, key) => {
         acc[key] = deps[key];
@@ -291,7 +312,9 @@ const build = async () => {
     }, {}), extraFields = ['engines', 'overrides', 'resolutions'].reduce((acc, key) => {
         if (pkgJson[key]) acc[key] = pkgJson[key];
         return acc;
-    }, {}), npmRebuildCfg = buildConfig.nativeModules?.npmRebuild === true, snapshotData = { deps: sortedDeps, extra: extraFields }, snapshotPath = path.join(tempDir, snapshotFile),
+    }, {}), npmRebuildCfg = buildConfig.nativeModules?.npmRebuild === true,
+        snapshotData = { deps: sortedDeps, extra: extraFields },
+        snapshotPath = path.join(tempDir, snapshotFile),
         thisOptimize = optimizeCfg === undefined || optimizeCfg.enabled !== false;
     // 判断:是否重装 / 是否优化
     let shouldInstall = true, shouldOptimize = thisOptimize, reasons = [];
@@ -326,7 +349,8 @@ const build = async () => {
                 '(原生编译: 开→关,其它无变化且编译文件已在上次优化中清理)' : ''))), await clearVerified(tempDir);
         }
     }
-    else console.log(chalk.gray('[信息] ' + (thisOptimize ? '重新安装依赖+优化' : '重新安装依赖') + '(原因: 缓存快照缺失)'));
+    else console.log(chalk.gray('[信息] ' + (thisOptimize ? '重新安装依赖+优化' : '重新安装依赖')
+        + '(原因: 缓存快照缺失)'));
 
     if (shouldInstall) {
         console.log(chalk.cyan('[信息] 正在安装依赖...')), await fs.remove(path.join(tempDir, 'node_modules'));
@@ -491,7 +515,8 @@ const build = async () => {
                     env: {
                         ...process.env,
                         ELECTRON_MIRROR: 'https://npmmirror.com/mirrors/electron/',
-                        ELECTRON_BUILDER_BINARIES_MIRROR: 'https://registry.npmmirror.com/-/binary/electron-builder-binaries/',
+                        ELECTRON_BUILDER_BINARIES_MIRROR:
+                            'https://registry.npmmirror.com/-/binary/electron-builder-binaries/',
                         ELECTRON_BUILDER_CACHE: CACHE_DIR,
                         CSC_IDENTITY_AUTO_DISCOVERY: 'false',
                         ...(CUR_PLAT !== 'win32' ? { USE_HARD_LINKS: 'true' } : {}),
@@ -512,9 +537,11 @@ const build = async () => {
     if (!success) {
         if (!process.env.OPTIMIZE_DEBUG && ebOutput.length > 0) console.error(chalk.gray(ebOutput.join('\n')));
         console.error(chalk.red('[错误] 生成可执行文件失败:'), lastError);
-        const missingDeps = Object.keys(snapshotData.deps || {}).filter(d => !fs.existsSync(path.join(tempDir, 'node_modules', d)));
+        const missingDeps = Object.keys(snapshotData.deps || {})
+            .filter(d => !fs.existsSync(path.join(tempDir, 'node_modules', d)));
         if (missingDeps.length > 0)
-            console.error(chalk.yellow('[提示] 依赖文件缺失: ' + missingDeps.join(', ') + ',再次运行构建命令即可自动重装修复'));
+            console.error(chalk.yellow('[提示] 依赖文件缺失: ' + missingDeps.join(', ')
+                + ',再次运行构建命令即可自动重装修复'));
         process.exit(1);
     }
 
@@ -525,7 +552,8 @@ const build = async () => {
         let copied = 0;
         for (const file of files) {
             if (excludePatterns.some(p => minimatch(file, p, { dot: true }))) continue;
-            if (patterns.some(p => file.endsWith(p))) await fs.copy(path.join(srcDir, file), path.join(targetDir, file)), copied++;
+            if (patterns.some(p => file.endsWith(p)))
+                await fs.copy(path.join(srcDir, file), path.join(targetDir, file)), copied++;
         }
         return copied > 0;
     },
@@ -598,7 +626,9 @@ const build = async () => {
             if (createStartMenuShortcut !== false) shortcutLocations.push('{group}');
             if (createDesktopShortcut !== false) shortcutLocations.push('{autodesktop}');
             if (shortcutLocations.length > 0) {
-                const iconEntries = shortcutLocations.map(loc => `Name: "${loc}\\${shortcutName}"; ${fileAndDir} `).join('\n');
+                const iconEntries = shortcutLocations.map(loc =>
+                    `Name: "${loc}\\${shortcutName}"; ${fileAndDir} `
+                ).join('\n');
                 sections.push(`[Icons]\n${iconEntries} `);
             }
             if (runAfterInstall !== false) {
@@ -606,9 +636,13 @@ const build = async () => {
                     `Flags: postinstall nowait skipifsilent`;
                 runEntries.push(runEntry);
             }
-            const tasksSection = `\n[Tasks]\nName: "defenderExclusion"; Description: "将应用加入 Windows Defender 排除项,加快启动"; Flags: checkedonce `;
+            const tasksSection = `\n[Tasks]\n` +
+                `Name: "defenderExclusion"; ` +
+                `Description: "将应用加入 Windows Defender 排除项,加快启动"; ` +
+                `Flags: checkedonce `;
             sections.push(`[Setup]\n${setupLines.join('\n')} `), sections.push(`[Files]\n${filesSection} `);
-            sections.push(langSection), sections.push(tasksSection), sections.push(`[Icons]\n${iconEntry} `), runEntries.push(hideCmd);
+            sections.push(langSection), sections.push(tasksSection),
+            sections.push(`[Icons]\n${iconEntry} `), runEntries.push(hideCmd);
             sections.push(`[Run]\n${runEntries.join('\n')} `);
             // 卸载时用户数据处理
             // usePreviousAppDir=true 时附加智能记忆:记住上次安装目录;清除用户数据时一并清除
@@ -637,9 +671,11 @@ const build = async () => {
                        AppDir := ExpandConstant('{app}');
                        PsFile := ExpandConstant('{tmp}') + '\\defender_add.ps1';
                        SaveStringToFile(PsFile, 'Add-MpPreference -ExclusionPath ''' + AppDir + '''', False);
-                       Exec('powershell', '-NoProfile -ExecutionPolicy Bypass -File "' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                       Exec('powershell', '-NoProfile -ExecutionPolicy Bypass -File "` +
+`' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                        if ResultCode <> 0 then
-                         ShellExec('runas', 'powershell', '-NoProfile -ExecutionPolicy Bypass -File "' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                         ShellExec('runas', 'powershell', '-NoProfile -ExecutionPolicy Bypass -File "` +
+`' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                      end;
                    end;
                  end;${curPageChanged}`;
@@ -653,9 +689,11 @@ const build = async () => {
                   if CurUninstallStep = usUninstall then
                   begin
                     Exec('taskkill', '/f /im ' + '${exeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-                    Exec('netsh', 'advfirewall firewall delete rule name="' + '${exeName.replace(/\.exe$/i, '')}' + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                    Exec('netsh', 'advfirewall firewall delete rule name="' + ` +
+`'${exeName.replace(/\.exe$/i, '')}' + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                     if ResultCode <> 0 then
-                      ShellExec('runas', 'netsh', 'advfirewall firewall delete rule name="' + '${exeName.replace(/\.exe$/i, '')}' + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                      ShellExec('runas', 'netsh', 'advfirewall firewall delete rule name="' + ` +
+`'${exeName.replace(/\.exe$/i, '')}' + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                   end;
                   if CurUninstallStep = usPostUninstall then
                   begin
@@ -667,10 +705,13 @@ const build = async () => {
                       if DirExists(userDataDir) then DelTree(userDataDir, True, True, True);
                       RegDeleteKeyIncludingSubkeys(HKCU, 'Software\\${appId}');
                       PsFile := GetEnv('TEMP') + '\\defender_remove.ps1';
-                      SaveStringToFile(PsFile, 'Remove-MpPreference -ExclusionPath ''' + ExpandConstant('{app}') + ''' -ErrorAction SilentlyContinue', False);
-                      Exec('powershell', '-NoProfile -ExecutionPolicy Bypass -File "' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                      SaveStringToFile(PsFile, 'Remove-MpPreference -ExclusionPath ''' + ExpandConstant('{app}') + ` +
+`''' -ErrorAction SilentlyContinue', False);
+                      Exec('powershell', '-NoProfile -ExecutionPolicy Bypass -File "' + PsFile + ` +
+`'"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                       if ResultCode <> 0 then
-                        ShellExec('runas', 'powershell', '-NoProfile -ExecutionPolicy Bypass -File "' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                        ShellExec('runas', 'powershell', '-NoProfile -ExecutionPolicy Bypass -File "' + PsFile + ` +
+`'"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                     end;
                     BatchFile := GetEnv('TEMP') + '\\deskapp-cleanup.bat';
                     AppDir := ExpandConstant('{app}');
@@ -682,13 +723,15 @@ const build = async () => {
                         'set /a retry=0' + #13#10 +
                         ':retry' + #13#10 +
                         'rmdir /s /q "' + AppDir + '" 2>nul' + #13#10 +
-                        'if not exist "' + AppDir + '" (del /q "' + BatchFile + '" "' + GetEnv('TEMP') + '\\defender_remove.ps1" 2>nul & exit /b)' + #13#10 +
+                        'if not exist "' + AppDir + '" (del /q "' + BatchFile + '" "' + GetEnv('TEMP') + ` +
+`'\\defender_remove.ps1" 2>nul & exit /b)' + #13#10 +
                         'set /a retry+=1' + #13#10 +
                         'if !retry! geq 15 exit /b' + #13#10 +
                         'timeout /t 2 /nobreak >nul' + #13#10 +
                         'goto retry', False) then Exit;
                     end;
-                    ShellExec('open', ExpandConstant('{cmd}'), '/c "' + BatchFile + '"', '', SW_HIDE, ewNoWait, ResultCode);
+                    ShellExec('open', ExpandConstant('{cmd}'), '/c "' + BatchFile + ` +
+`'"', '', SW_HIDE, ewNoWait, ResultCode);
                   end;
                 end;`);
             return sections.join('\n\n');
@@ -730,7 +773,8 @@ const build = async () => {
                 const zip = new AdmZip(zipPath);
                 zip.extractAllTo(cacheDir, true), await fs.remove(zipPath);
 
-                if (!(await fs.pathExists(isccExe) && await fs.pathExists(versionFile))) throw new Error('解压后缺少关键文件');
+                if (!(await fs.pathExists(isccExe) && await fs.pathExists(versionFile)))
+                    throw new Error('解压后缺少关键文件');
                 await fs.remove(backupDir).catch(() => { });
                 return console.log(chalk.green(`[信息] 最新版:${latestTag} 安装成功,继续构建...`)), isccExe;
             } catch (err) {
@@ -759,7 +803,9 @@ const build = async () => {
                     const { stdout } = await execa('where', ['iscc']);
                     if (stdout.trim()) return stdout.trim().split('\n')[0];
                 } catch (_) { }
-                const { ProgramFiles = 'C:\\Program Files', 'ProgramFiles(x86)': ProgramFilesX86 = 'C:\\Program Files (x86)'
+                const {
+                    ProgramFiles = 'C:\\Program Files',
+                    'ProgramFiles(x86)': ProgramFilesX86 = 'C:\\Program Files (x86)'
                 } = process.env, programFiles = [ProgramFiles, ProgramFilesX86];
                 for (const pf of programFiles) {
                     try {
@@ -777,13 +823,15 @@ const build = async () => {
         }
         if (!isccPath) {
             console.error(chalk.red('[错误] 未找到 Inno Setup 编译器!'));
-            console.error(chalk.yellow('[提示] 手动下载:https://jrsoftware.org/isdl.php; 选择默认安装目录;')), process.exit(1);
+            console.error(chalk.yellow(
+                '[提示] 手动下载:https://jrsoftware.org/isdl.php; 选择默认安装目录;')), process.exit(1);
         }
 
         const {
             appName: innoAppName, appVersion: innoVersion, appId: innoAppId, appPublisher, createStartMenuShortcut,
             createDesktopShortcut, defaultDirName, defaultGroupName, shortcutName: innoShortcut, outputDir: innoOutputDir,
-            outputBaseFilename, runAfterInstall, runDescription, uninstallDisplayIcon, versionInfoVersion, signedUninstaller,
+            outputBaseFilename, runAfterInstall, runDescription,
+            uninstallDisplayIcon, versionInfoVersion, signedUninstaller,
             signingTool: _st, signToolParams: _stp, ...inno
         } = innoConfig;
 
@@ -797,10 +845,13 @@ const build = async () => {
         }
         const appExe = path.join(appDir, exeName), sourceDir = innoOutputDir || path.join(tempDir, 'Output'),
             issContent = await generateIssScript({
-                appName: innoAppName || appName, appVersion: innoVersion || pkgVersion || '1.0.0', appId: innoAppId || appId,
+                appName: innoAppName || appName, appVersion: innoVersion || pkgVersion || '1.0.0',
+                appId: innoAppId || appId,
                 createStartMenuShortcut, createDesktopShortcut, exeName: path.basename(appExe),
-                groupName: defaultGroupName || appName, installDirName: defaultDirName || `{localappdata}\\Programs\\${appName}`,
-                inno, isccDir: path.dirname(isccPath), outputBase: outputBaseFilename || `${appName}Setup`, outputDir: sourceDir,
+                groupName: defaultGroupName || appName,
+                installDirName: defaultDirName || `{localappdata}\\Programs\\${appName}`,
+                inno, isccDir: path.dirname(isccPath), outputBase: outputBaseFilename || `${appName}Setup`,
+                outputDir: sourceDir,
                 publisher: appPublisher || userPublisher || pkgAuthor || appName, runAfterInstall, runDescription,
                 shortcutName: innoShortcut || userShortcutName || appName, uninstallDisplayIcon, versionInfoVersion,
                 signingToolName, signedUninstaller
@@ -809,11 +860,14 @@ const build = async () => {
         try {
             const isccArgs = ['/Q'];
             if (signingToolName && signingToolPath && signToolParams) {
-                const toolPathEscaped = signingToolPath.replace(/"/g, '$q'), paramsEscaped = signToolParams.replace(/"/g, '$q');
+                const toolPathEscaped = signingToolPath.replace(/"/g, '$q'),
+                    paramsEscaped = signToolParams.replace(/"/g, '$q');
                 isccArgs.push(`/S${signingToolName}=$q${toolPathEscaped}$q ${paramsEscaped}`);
             }
             isccArgs.push(issPath);
-            await execa(isccPath, isccArgs, { cwd: tempDir, stdio: 'inherit', env: process.env, windowsVerbatimArguments: false });
+            await execa(isccPath, isccArgs, {
+                cwd: tempDir, stdio: 'inherit', env: process.env, windowsVerbatimArguments: false
+            });
         } catch (error) {
             console.error(chalk.red('[错误] Inno Setup 打包失败:'), error), process.exit(1);
         }

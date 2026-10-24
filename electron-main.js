@@ -146,7 +146,7 @@ const require = createRequire(import.meta.url), __dirname = path.dirname(fileURL
     let port = 7296;
     try { port = parseInt(new URL(CONFIG.APP_URL).port) || 7296 } catch (_) { }
     for (let attempt = 1; attempt <= 3; attempt++) {
-      log(`正在清理端口 ${port}（尝试 ${attempt}/3）...`);
+      log(`正在清理端口 ${port}(尝试 ${attempt}/3)...`);
       await ensurePortFree(port), log('正在启动服务器进程...');
       const env = { ...process.env, NODE_PATH: path.join(__dirname, 'node_modules'), ELECTRON_RUN_AS_NODE: '1' };
       serverProcess = spawn(process.execPath, [serverPath], {
@@ -156,7 +156,7 @@ const require = createRequire(import.meta.url), __dirname = path.dirname(fileURL
       serverProcess.stderr.on('data', d => log('服务器 stderr: ' + d.toString().trim()));
       serverProcess.on('error', err => log('服务器进程错误: ' + err.message)), serverProcess.unref();
 
-      log(`等待服务器就绪（端口 ${port}）...`);
+      log(`等待服务器就绪(端口 ${port})...`);
       const ready = await waitForServer(port, 30000);
       if (ready) return log('服务器已就绪 ✓'), true;
       log(`服务器未就绪 (尝试 ${attempt}/3),重试...`), killServerProcess(), await sleep(2000);
@@ -199,7 +199,9 @@ const require = createRequire(import.meta.url), __dirname = path.dirname(fileURL
             mainWindow.loadURL(`data:text/html;charset=utf-8,<h2>加载失败</h2><p>${desc}</p><p>URL: ${url}</p>`);
         });
         await mainWindow.loadURL(TARGET_URL), loadRetryCount = 0;
-        setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show(); }, 3000);
+        setTimeout(() => {
+            if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+        }, 3000);
 
         mainWindow.on('closed', () => mainWindow = null);
         return mainWindow;
@@ -235,7 +237,8 @@ switches.forEach(s => app.commandLine.appendSwitch(s));
 try {
   const hostname = new URL(TARGET_URL).hostname;
   app.commandLine.appendSwitch('enable-features',
-    'WebAuthentication,WebAuthn,WebAuthenticationHidSupport,WebAuthenticationWindowsApi,WebAuthenticationAndroidAccessory');
+    'WebAuthentication,WebAuthn,WebAuthenticationHidSupport,' +
+    'WebAuthenticationWindowsApi,WebAuthenticationAndroidAccessory');
   app.commandLine.appendSwitch('disable-features', 'UseDnsHttpsSvcb,BlockInsecurePrivateNetworkRequests');
   app.commandLine.appendSwitch('enable-experimental-web-platform-features');
   app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
