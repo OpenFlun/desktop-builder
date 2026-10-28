@@ -1,4 +1,4 @@
-﻿# @flun/desktop-builder
+# @flun/desktop-builder
 
 > 将任意 Node.js 项目一键打包为当前平台的桌面应用 (Windows, macOS, Linux)(基于 Electron),支持高度自定义配置;
 
@@ -142,6 +142,26 @@ npm install -D @flun/desktop-builder
 
 安装完成后,`postinstall` 脚本会自动将 `desktopAppConfig.js` 配置文件模板以及 `build/` 
 目录(含默认图标等资源)复制到你的项目根目录(如果不存在);
+
+---
+
+## 🖥️ 命令行
+
+包内声明 `bin` 为 `desktop-builder`,安装后可直接调用:
+
+```bash
+desktop-builder build          # 按 desktopAppConfig.js 构建桌面应用
+desktop-builder build --debug  # 输出详细日志(优化阶段每个包的处理、electron-builder 完整输出)
+desktop-builder --help         # 查看用法
+```
+
+| 命令/参数 | 作用 |
+|---|---|
+| `build` | 构建桌面应用,产物输出到 `build.outputDir`(默认 `./dist`) |
+| `--debug` | 输出详细日志,便于排查构建问题 |
+| `--help`、`-h`、`help` | 显示用法 |
+
+项目内安装时用 `npx desktop-builder`;未指定命令时等同 `--help`;未知命令会报错并以非零码退出;
 
 ---
 
