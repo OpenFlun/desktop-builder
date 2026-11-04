@@ -2,7 +2,7 @@ import {
     CUR_ARCH, CUR_PLAT, clearVerified, findFileRecursive, getElectronCacheDir, markVerified, optimizeNodeModules,
     SELF_HASH
 } from './optimize-node-modules.js';
-import { runCLI, build } from './build.js';
+import { build } from './build.js';
 
 // =================================== optimize-node-modules.js ===================================
 /**
@@ -29,9 +29,8 @@ declare module './optimize-node-modules.js' {
  * ```js
  * // 文件导出内容
  * build();  // 构建桌面应用程序
- * runCLI(); // 解析 process.argv 并执行对应的构建命令
  * ```
- * >查看定义:@see {@link build},{@link runCLI}
+ * >查看定义:@see {@link build}
  */
 declare module './build.js' {
     export * from './build.js';

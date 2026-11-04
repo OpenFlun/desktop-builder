@@ -9,7 +9,7 @@
   },
   "main": "index.js",
   "bin": {
-    "desktop-builder": "./index.js"
+    "desktop-builder": "bin/cli.js"
   },
   "scripts": {
     "postinstall": "node copy-files.js 2>&1"
@@ -38,17 +38,18 @@
     "access": "public"
   },
   "files": [
+    "bin/",
     "build/",
     "build.js",
-    "optimize-node-modules.js",
     "copy-files.js",
     "desktopAppConfig.js",
     "electron-main.js",
     "index.js",
+    "optimize-node-modules.js",
     "index.d.ts",
-    "LICENSE",
     "CHANGELOG.md",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "dependencies": {
     "adm-zip": "^0.6.1",

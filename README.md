@@ -82,23 +82,24 @@ asar 用**虚拟归档**实现,牺牲了 Node.js 子进程的读取能力--**它
 
 ```
 @flun/desktop-builder/
-├── build/                    # 默认资源(图标,安装向导图)
-│   ├── icon.png              # 应用图标(512×512 PNG,跨平台默认)
-│   ├── setup.ico             # Windows 安装程序图标
-│   ├── uninstallerIcon.ico   # Windows 卸载程序图标
-│   ├── wizard.bmp            # Inno Setup 左侧大图(164×314 BMP)
-│   └── wizardSmall.bmp       # Inno Setup 右上小图(55×58 BMP)
-├── build.js                  # 构建主逻辑(复制文件,安装依赖,调用优化系统,electron-builder,Inno Setup 打包)
-├── optimize-node-modules.js  # node_modules 优化系统(6 阶段:清空资源 / 合并 JS / 清平台二进制 /
-│                             清开发文件 / 清中间产物 / 清不参与运行的文件和空目录)
-├── copy-files.js             # postinstall 脚本:复制配置模板与 build/ 到项目根目录
-├── desktopAppConfig.js       # 配置文件模板(安装时复制到项目根目录)
-├── electron-main.js          # Electron 主进程模板(构建时替换占位符生成 main.mjs)
-├── index.js                  # CLI 入口(desktop-builder build / help)
-├── index.d.ts                # TypeScript 类型声明
-├── LICENSE
-├── CHANGELOG.md
-└── README.md
+├── bin/
+│   └── cli.js                    # 命令行入口
+├── build/                        # 默认资源(图标,安装向导图)
+│   ├── icon.png                  # 应用图标(512×512 PNG,跨平台默认)
+│   ├── setup.ico                 # Windows 安装程序图标
+│   ├── uninstallerIcon.ico       # Windows 卸载程序图标
+│   ├── wizard.bmp                # Inno Setup 左侧大图(164×314 BMP)
+│   └── wizardSmall.bmp           # Inno Setup 右上小图(55×58 BMP)
+├── build.js                      # 构建主逻辑(复制,依赖,优化,electron-builder,Inno Setup)
+├── copy-files.js                 # postinstall:复制配置模板与 build/ 到项目根
+├── desktopAppConfig.js           # 配置文件模板(安装时复制到项目根)
+├── electron-main.js              # Electron 主进程模板(构建时生成 main.mjs)
+├── index.js                      # 库入口,导出 build
+├── optimize-node-modules.js      # node_modules 优化系统(6 阶段)
+├── index.d.ts                    # TypeScript 类型声明
+├── CHANGELOG.md                  # 更新日志
+├── README.md                     # 本文件
+└── LICENSE                       # 许可
 ```
 
 ---
@@ -152,18 +153,20 @@ npm install -D @flun/desktop-builder
 ```bash
 desktop-builder build          # 按 desktopAppConfig.js 构建桌面应用
 desktop-builder build --debug  # 输出详细日志(优化阶段每个包的处理、electron-builder 完整输出)
+desktop-builder example        # 生成 desktopAppConfig.js 与 build/ 到项目根
 desktop-builder help           # 查看用法
 ```
 
 | 命令/参数 | 作用 |
 |---|---|
 | `build` | 构建桌面应用,产物输出到 `build.outputDir`(默认 `./dist`) |
+| `example` | 生成 desktopAppConfig.js 与 build/ 到项目根目录 |
 | `--debug` | 输出详细日志,便于排查构建问题 |
 | `--help`、`-h`、`help` | 显示用法 |
 
 项目内安装时用 `npx desktop-builder`;未指定命令时等同 `help`;未知命令会先打印帮助内容,再以非零码退出;
 
-使用前在项目根目录创建 `desktopAppConfig.js`(必填字段见 [参考配置](#参考配置)),然后执行:
+使用前先执行 `npx desktop-builder example`,按需修改生成的 `desktopAppConfig.js`(必填字段见 [参考配置](#参考配置)),然后执行:
 
 ```bash
 npx desktop-builder build

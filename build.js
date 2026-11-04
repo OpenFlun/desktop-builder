@@ -129,20 +129,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
             console.warn(chalk.yellow('[警告] Electron 解压失败,将走默认流程: ' + err.message));
         }
         return null;
-    },
-    // 输出命令用法;
-    printHelp = () => {
-        const cmd = (name, desc) => `      ${chalk.cyanBright(name.padEnd(26))}${chalk.gray(desc)}`,
-            grp = name => `    ${chalk.cyan(name)}`;
-        console.log([
-            `  ${chalk.blueBright('用法:')} desktop-builder <命令> [选项]`, '',
-            grp('命令'),
-            cmd('build', '构建桌面应用程序'),
-            cmd('help', '显示本帮助'), '',
-            grp('build 选项'),
-            cmd('--debug', '显示详细日志,含每个包的处理与 electron-builder 完整输出'), '',
-            `  ${chalk.gray('先配置 desktopAppConfig.js,再运行 desktop-builder build 构建;')}`
-        ].join('\n'));
     };
 /**
  * 构建桌面应用程序(跨平台)
@@ -904,17 +890,4 @@ const build = async () => {
         else console.warn(chalk.yellow('[警告] 未找到构建产物;'));
     }
 };
-/**
- * 运行命令行接口
- * >查看定义:@see {@link runCLI}
- */
-const runCLI = async () => {
-    const command = process.argv[2];
-    if (!command || command === 'help' || command === '--help' || command === '-h') printHelp(), process.exit(0);
-    if (command === 'build') {
-        if (process.argv.includes('--debug')) process.env.OPTIMIZE_DEBUG = '1';
-        await build();
-    }
-    else console.error(`未知命令: ${command}`), printHelp(), process.exit(1);
-};
-export { build, runCLI };
+export { build };
