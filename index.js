@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 import { runCLI, build } from './build.js';
 import { fileURLToPath } from 'url';
 import fs from 'fs';

@@ -891,18 +891,25 @@ const build = async () => {
     }
 };
 /**
+ * 输出命令用法;
+ * >查看定义:@see {@link printHelp}
+ */
+const printHelp = () => {
+    console.log(`用法:先配置 desktopAppConfig.js 文件,然后运行->desktop-builder build 指令构建桌面应用程序`),
+        console.log(`     加 --debug 可显示详细日志(优化阶段每个包的处理,electron-builder 完整输出)`);
+};
+/**
  * 运行命令行接口
  * >查看定义:@see {@link runCLI}
  */
 const runCLI = async () => {
     const command = process.argv[2];
     if (!command || command === 'help' || command === '--help' || command === '-h')
-        console.log(`用法:先配置 desktopAppConfig.js 文件,然后运行->desktop-builder build 指令构建桌面应用程序`),
-            console.log(`     加 --debug 可显示详细日志(优化阶段每个包的处理,electron-builder 完整输出)`), process.exit(0);
+        printHelp(), process.exit(0);
     if (command === 'build') {
         if (process.argv.includes('--debug')) process.env.OPTIMIZE_DEBUG = '1';
         await build();
     }
-    else console.error(`未知命令: ${command}`), console.log('请运行 "desktop-builder --help" 查看用法;'), process.exit(1);
+    else console.error(`未知命令: ${command}`), printHelp(), process.exit(1);
 };
 export { runCLI, build };
