@@ -129,6 +129,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
             console.warn(chalk.yellow('[警告] Electron 解压失败,将走默认流程: ' + err.message));
         }
         return null;
+    },
+    // 输出命令用法;
+    printHelp = () => {
+        const cmd = (name, desc) => `      ${chalk.cyanBright(name.padEnd(26))}${chalk.gray(desc)}`,
+            grp = name => `    ${chalk.cyan(name)}`;
+        console.log([
+            `  ${chalk.blueBright('用法:')} desktop-builder <命令> [选项]`, '',
+            grp('命令'),
+            cmd('build', '构建桌面应用程序'),
+            cmd('help', '显示本帮助'), '',
+            grp('build 选项'),
+            cmd('--debug', '显示详细日志,含每个包的处理与 electron-builder 完整输出'), '',
+            `  ${chalk.gray('先配置 desktopAppConfig.js,再运行 desktop-builder build 构建;')}`
+        ].join('\n'));
     };
 /**
  * 构建桌面应用程序(跨平台)
@@ -642,7 +656,7 @@ const build = async () => {
                 `Flags: checkedonce `;
             sections.push(`[Setup]\n${setupLines.join('\n')} `), sections.push(`[Files]\n${filesSection} `);
             sections.push(langSection), sections.push(tasksSection),
-            sections.push(`[Icons]\n${iconEntry} `), runEntries.push(hideCmd);
+                sections.push(`[Icons]\n${iconEntry} `), runEntries.push(hideCmd);
             sections.push(`[Run]\n${runEntries.join('\n')} `);
             // 卸载时用户数据处理
             // usePreviousAppDir=true 时附加智能记忆:记住上次安装目录;清除用户数据时一并清除
@@ -672,10 +686,10 @@ const build = async () => {
                        PsFile := ExpandConstant('{tmp}') + '\\defender_add.ps1';
                        SaveStringToFile(PsFile, 'Add-MpPreference -ExclusionPath ''' + AppDir + '''', False);
                        Exec('powershell', '-NoProfile -ExecutionPolicy Bypass -File "` +
-`' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                    `' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                        if ResultCode <> 0 then
                          ShellExec('runas', 'powershell', '-NoProfile -ExecutionPolicy Bypass -File "` +
-`' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                    `' + PsFile + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                      end;
                    end;
                  end;${curPageChanged}`;
@@ -690,10 +704,10 @@ const build = async () => {
                   begin
                     Exec('taskkill', '/f /im ' + '${exeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                     Exec('netsh', 'advfirewall firewall delete rule name="' + ` +
-`'${exeName.replace(/\.exe$/i, '')}' + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                `'${exeName.replace(/\.exe$/i, '')}' + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                     if ResultCode <> 0 then
                       ShellExec('runas', 'netsh', 'advfirewall firewall delete rule name="' + ` +
-`'${exeName.replace(/\.exe$/i, '')}' + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                `'${exeName.replace(/\.exe$/i, '')}' + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                   end;
                   if CurUninstallStep = usPostUninstall then
                   begin
@@ -706,12 +720,12 @@ const build = async () => {
                       RegDeleteKeyIncludingSubkeys(HKCU, 'Software\\${appId}');
                       PsFile := GetEnv('TEMP') + '\\defender_remove.ps1';
                       SaveStringToFile(PsFile, 'Remove-MpPreference -ExclusionPath ''' + ExpandConstant('{app}') + ` +
-`''' -ErrorAction SilentlyContinue', False);
+                `''' -ErrorAction SilentlyContinue', False);
                       Exec('powershell', '-NoProfile -ExecutionPolicy Bypass -File "' + PsFile + ` +
-`'"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                `'"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                       if ResultCode <> 0 then
                         ShellExec('runas', 'powershell', '-NoProfile -ExecutionPolicy Bypass -File "' + PsFile + ` +
-`'"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+                `'"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
                     end;
                     BatchFile := GetEnv('TEMP') + '\\deskapp-cleanup.bat';
                     AppDir := ExpandConstant('{app}');
@@ -724,14 +738,14 @@ const build = async () => {
                         ':retry' + #13#10 +
                         'rmdir /s /q "' + AppDir + '" 2>nul' + #13#10 +
                         'if not exist "' + AppDir + '" (del /q "' + BatchFile + '" "' + GetEnv('TEMP') + ` +
-`'\\defender_remove.ps1" 2>nul & exit /b)' + #13#10 +
+                `'\\defender_remove.ps1" 2>nul & exit /b)' + #13#10 +
                         'set /a retry+=1' + #13#10 +
                         'if !retry! geq 15 exit /b' + #13#10 +
                         'timeout /t 2 /nobreak >nul' + #13#10 +
                         'goto retry', False) then Exit;
                     end;
                     ShellExec('open', ExpandConstant('{cmd}'), '/c "' + BatchFile + ` +
-`'"', '', SW_HIDE, ewNoWait, ResultCode);
+                `'"', '', SW_HIDE, ewNoWait, ResultCode);
                   end;
                 end;`);
             return sections.join('\n\n');
@@ -891,25 +905,16 @@ const build = async () => {
     }
 };
 /**
- * 输出命令用法;
- * >查看定义:@see {@link printHelp}
- */
-const printHelp = () => {
-    console.log(`用法:先配置 desktopAppConfig.js 文件,然后运行->desktop-builder build 指令构建桌面应用程序`),
-        console.log(`     加 --debug 可显示详细日志(优化阶段每个包的处理,electron-builder 完整输出)`);
-};
-/**
  * 运行命令行接口
  * >查看定义:@see {@link runCLI}
  */
 const runCLI = async () => {
     const command = process.argv[2];
-    if (!command || command === 'help' || command === '--help' || command === '-h')
-        printHelp(), process.exit(0);
+    if (!command || command === 'help' || command === '--help' || command === '-h') printHelp(), process.exit(0);
     if (command === 'build') {
         if (process.argv.includes('--debug')) process.env.OPTIMIZE_DEBUG = '1';
         await build();
     }
     else console.error(`未知命令: ${command}`), printHelp(), process.exit(1);
 };
-export { runCLI, build };
+export { build, runCLI };
