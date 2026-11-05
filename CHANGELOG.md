@@ -1,5 +1,21 @@
 ﻿# 变更日志
 
+## [6.5.0] - 2026-11-05 08:17
+### 新增
+- 命令行新增 `example` 子命令,重新生成 `desktopAppConfig.js` 与 `build/` 到项目根目录;
+  此前这两个文件只由 `postinstall` 自动复制,误删后无法手动恢复;
+
+### 优化
+- 命令行入口从 `index.js` 迁至 `bin/cli.js`,`bin` 字段同步更新;命令名 `desktop-builder` 不变;
+  `index.js` 精简为库入口,只导出 `build`;
+- `build.js` 移除 `printHelp` 与 `runCLI`,CLI 逻辑集中到 `bin/cli.js`;
+- `copy-files.js` 输出改用 chalk 按语义着色,移除 emoji 前缀,与其他作用域包一致;
+
+### 文档
+- README 目录结构按文件类型分组,与 `package.json` 的 `files` 字段顺序一致,并补 `bin/cli.js`;
+- README 命令行章节补充 `example` 子命令;
+- `index.d.ts` 移除已删除的 `runCLI` 引用;
+
 ## [6.4.3] - 2026-11-04 20:34
 ### 优化
 - 细节优化+依赖包升级;
@@ -13,8 +29,3 @@
 ### 文档
 - README 新增"命令行"章节:说明 `bin` 命令名、`build`/`--debug` 参数与 `help` 用法,
   补齐此前只散落在"快速开始"中的命令说明;
-
-## [6.4.1] - 2026-10-24 21:43
-### 优化
-- 项目标点已改为以英文标点为主;
-- 行宽改为以 123 为主,部分超宽表格改为了列表;
