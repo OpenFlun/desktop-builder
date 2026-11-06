@@ -9,7 +9,7 @@ import { minimatch } from 'minimatch';
 import AdmZip from 'adm-zip';
 import {
     CUR_ARCH, CUR_PLAT, clearVerified, findFileRecursive, getElectronCacheDir, markVerified, optimizeNodeModules,
-    SELF_HASH
+    promotePeerDeps, SELF_HASH, SNAPSHOT_FILE
 } from './optimize-node-modules.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = createRequire(import.meta.url),
@@ -111,8 +111,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = create
             if (!zipPath) return null;
             const unzipDir = zipPath.replace(/\.zip$/i, ''),
                 exeRel = {
-                    win32: 'electron.exe', darwin: 'Electron.app/Contents/MacOS/Electron',
-                    linux: 'electron'
+                    win32: 'electron.exe', darwin: 'Electron.app/Contents/MacOS/Electron', linux: 'electron'
                 }[CUR_PLAT];
             let ready = exeRel && (await fs.pathExists(path.join(unzipDir, exeRel)));
             if (!ready) {
@@ -236,8 +235,6 @@ const build = async () => {
             }
         }
     }
-
-
     const origPkg = await fs.readJson(origPkgPath), { name: pkgName, version: pkgVersion, author: pkgAuthor } = origPkg,
         appName = userAppName || pkgName || 'deskApp',
         configAllowScripts = (allowScripts && typeof allowScripts === 'object' && !Array.isArray(allowScripts))
@@ -250,9 +247,9 @@ const build = async () => {
     const tempDir = path.join(os.tmpdir(), 'desktop-builder-build', path.basename(process.cwd()));
     await fs.ensureDir(tempDir);
     // 清理临时目录,保留 node_modules 和依赖快照
-    const snapshotFile = '.deps-snapshot.json', items = await fs.readdir(tempDir).catch(() => []);
+    const items = await fs.readdir(tempDir).catch(() => []);
     for (const item of items) {
-        if (item === 'node_modules' || item === snapshotFile) continue;
+        if (item === 'node_modules' || item === SNAPSHOT_FILE) continue;
         await fs.remove(path.join(tempDir, item));
     }
     // 复制需要的项目文件到临时目录
@@ -302,8 +299,7 @@ const build = async () => {
     else pkgJson.dependencies = {};
     delete pkgJson.devDependencies, pkgJson.main = 'main.mjs', pkgJson.description = appName;
     await Promise.all([
-        fs.writeFile(path.join(tempDir, 'main.mjs'), mainJs),
-        fs.writeJson(rootPkgPath, pkgJson, { spaces: 2 })
+        fs.writeFile(path.join(tempDir, 'main.mjs'), mainJs), fs.writeJson(rootPkgPath, pkgJson, { spaces: 2 })
     ]);
 
     const deps = pkgJson.dependencies || {}, sortedDeps = Object.keys(deps).sort().reduce((acc, key) => {
@@ -313,8 +309,7 @@ const build = async () => {
         if (pkgJson[key]) acc[key] = pkgJson[key];
         return acc;
     }, {}), npmRebuildCfg = buildConfig.nativeModules?.npmRebuild === true,
-        snapshotData = { deps: sortedDeps, extra: extraFields },
-        snapshotPath = path.join(tempDir, snapshotFile),
+        snapshotData = { deps: sortedDeps, extra: extraFields }, snapshotPath = path.join(tempDir, SNAPSHOT_FILE),
         thisOptimize = optimizeCfg === undefined || optimizeCfg.enabled !== false;
     // 判断:是否重装 / 是否优化
     let shouldInstall = true, shouldOptimize = thisOptimize, reasons = [];
@@ -323,8 +318,7 @@ const build = async () => {
             depsSame = JSON.stringify({ deps: old.deps, extra: old.extra }) === JSON.stringify(snapshotData),
             verifiedOk = old.verified === true, envSame = old.platform === CUR_PLAT && old.arch === CUR_ARCH,
             lastOptimized = old.optimized !== false, selfHashSame = old.optimizeHash === SELF_HASH,
-            nmExists = await fs.pathExists(path.join(tempDir, 'node_modules')),
-            npmRebuildOld = old.npmRebuild === true,
+            nmExists = await fs.pathExists(path.join(tempDir, 'node_modules')), npmRebuildOld = old.npmRebuild === true,
             npmRebuildOffToOn = thisOptimize && !npmRebuildOld && npmRebuildCfg;
         if (!depsSame) reasons.push('依赖清单已变化');
         if (!verifiedOk) reasons.push('上次构建未完成');
@@ -376,7 +370,6 @@ const build = async () => {
     }
     // 确保 Electron 已解压到缓存目录(优化器读取,electron-builder 复用)
     const electronDist = await ensureElectronUnpacked(electronVersion);
-
     // 编译原生模块(前移至优化之前)
     if (npmRebuildCfg && shouldInstall) {
         console.log(chalk.cyan('[信息] 正在编译原生模块...'));
@@ -405,13 +398,14 @@ const build = async () => {
             console.error(chalk.yellow("       或用 optimize: { exclude: [\"包名\"] } 排除问题包.")), process.exit(1);
         }
     }
-    // 更新 allowScripts
+    // 优化后提升 peer 依赖并写入 allowScripts
     if (await fs.pathExists(rootPkgPath)) {
         try {
             const rootPkg = await fs.readJson(rootPkgPath);
+            await promotePeerDeps(path.join(tempDir, 'node_modules'), rootPkg.dependencies || {});
             rootPkg.allowScripts = configAllowScripts, await fs.writeJson(rootPkgPath, rootPkg, { spaces: 2 });
         } catch (err) {
-            console.warn(chalk.yellow('[警告] 更新 allowScripts 失败: ' + err.message));
+            console.error(chalk.red('[错误] 提升 peer 依赖失败: ' + err.message)), process.exit(1);
         }
     }
     // 构建 configObj
@@ -423,7 +417,8 @@ const build = async () => {
         if (pattern.endsWith('/')) return `!${pattern.slice(0, -1)}/**`;
         return `!${pattern}`;
     }),
-        files = ["**/*", "!builder.json", ...userExcludePatterns], output = path.join(tempDir, 'app'), configObj = {
+        files = ["**/*", "!builder.json", "!" + SNAPSHOT_FILE, ...userExcludePatterns],
+        output = path.join(tempDir, 'app'), configObj = {
             files, asar: false, nativeModules: { npmRebuild: false }, electronVersion, appId,
             ...(electronDist ? { electronDist } : {}), productName: appName, ...restBuild
         };
@@ -636,10 +631,9 @@ const build = async () => {
                     `Flags: postinstall nowait skipifsilent`;
                 runEntries.push(runEntry);
             }
-            const tasksSection = `\n[Tasks]\n` +
-                `Name: "defenderExclusion"; ` +
-                `Description: "将应用加入 Windows Defender 排除项,加快启动"; ` +
-                `Flags: checkedonce `;
+            const tasksSection = `
+[Tasks]
+Name: "defenderExclusion"; Description: "将应用加入 Windows Defender 排除项,加快启动"; Flags: checkedonce `;
             sections.push(`[Setup]\n${setupLines.join('\n')} `), sections.push(`[Files]\n${filesSection} `);
             sections.push(langSection), sections.push(tasksSection),
                 sections.push(`[Icons]\n${iconEntry} `), runEntries.push(hideCmd);

@@ -765,6 +765,46 @@ const optimizeNodeModules = async (tempDir, config = {}) => {
     }
 };
 /**
+ * 将生产依赖树中实际存在的 peerDependencies 提升为根依赖
+ * >查看定义:@see {@link promotePeerDeps}
+ * @param {string} nmDir node_modules 目录绝对路径
+ * @param {object} rootDeps 根依赖对象,会被直接修改
+ * @returns {Promise<string[]>} 被提升的依赖说明列表
+ */
+const promotePeerDeps = async (nmDir, rootDeps) => {
+    if (!await fs.pathExists(nmDir)) return [];
+    const resolveDep = (fromDir, name) => {
+        for (let d = fromDir; ; d = path.dirname(d)) {
+            const p = path.join(d, NM_DIR, name);
+            if (fs.existsSync(p)) return p;
+            if (path.dirname(d) === d) return null;
+        }
+    };
+    const visited = new Set(), promoted = [], queue = Object.keys(rootDeps).map(n => [n, nmDir]);
+    while (queue.length) {
+        const [name, fromDir] = queue.shift();
+        if (visited.has(name)) continue;
+        visited.add(name);
+        const pkgDir = resolveDep(fromDir, name);
+        if (!pkgDir) continue;
+        const pj = path.join(pkgDir, PKG_JSON);
+        if (!fs.existsSync(pj)) continue;
+        let j;
+        try { j = JSON.parse(fs.readFileSync(pj, 'utf8')); } catch { continue; }
+        for (const dep of Object.keys(j.dependencies || {})) queue.push([dep, pkgDir]);
+        for (const peer of Object.keys(j.peerDependencies || {})) {
+            if (rootDeps[peer] || visited.has(peer)) continue;
+            const peerDir = resolveDep(pkgDir, peer);
+            if (!peerDir) continue;
+            try {
+                const peerJ = JSON.parse(fs.readFileSync(path.join(peerDir, PKG_JSON), 'utf8'));
+                rootDeps[peer] = peerJ.version, promoted.push(peer + '@' + peerJ.version + ' (' + name + ')');
+                queue.push([peer, peerDir]);
+            } catch { }
+        }
+    }
+    return promoted;
+};/**
  * 当前优化文件的 SHA256 前 16 位(缓存指纹:优化代码一改,缓存自动失效)
  * >查看定义:@see {@link SELF_HASH}
  */
@@ -775,8 +815,7 @@ const SELF_HASH = (() => {
     } catch { return 'unknown'; }
 })();
 
-
 export {
     CUR_ARCH, CUR_PLAT, clearVerified, findFileRecursive, getElectronCacheDir, markVerified, optimizeNodeModules,
-    SELF_HASH
+    promotePeerDeps, SELF_HASH, SNAPSHOT_FILE
 };
