@@ -154,6 +154,7 @@ npm install -D @flun/desktop-builder
 desktop-builder build          # 按 desktopAppConfig.js 构建桌面应用
 desktop-builder build --debug  # 输出详细日志(优化阶段每个包的处理、electron-builder 完整输出)
 desktop-builder example        # 生成 desktopAppConfig.js 与 build/ 到项目根
+desktop-builder clean          # 清理临时构建目录
 desktop-builder help           # 查看用法
 ```
 
@@ -161,6 +162,7 @@ desktop-builder help           # 查看用法
 | ---------------------- | -------------------------------------------------------- |
 | `build`                | 构建桌面应用,产物输出到 `build.outputDir`(默认 `./dist`) |
 | `example`              | 生成 desktopAppConfig.js 与 build/ 到项目根目录          |
+| `clean`                | 清理临时构建目录                                           |
 | `--debug`              | 输出详细日志,便于排查构建问题                            |
 | `--help`、`-h`、`help` | 显示用法                                                 |
 

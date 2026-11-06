@@ -14,12 +14,17 @@ const CUR_ARCH = process.arch;
  * 当前系统架构:CUR_PLAT
  * >查看定义:@see {@link CUR_PLAT}
  */
-const CUR_PLAT = process.platform, require = createRequire(import.meta.url),
+const CUR_PLAT = process.platform;
+/**
+ * 依赖快照文件名:SNAPSHOT_FILE
+ * >查看定义:@see {@link SNAPSHOT_FILE}
+ */
+const SNAPSHOT_FILE = '.deps-snapshot.json', require = createRequire(import.meta.url),
     subpath = (...parts) => './' + path.posix.join(...parts), BUNDLED_DIR = 'bundled', NM_DIR = 'node_modules',
     PKG_JSON = 'package.json', ENTRY_EXTS = ['.js', '.cjs', '.mjs', '/index.js', '/index.cjs', '/index.mjs'],
     JS_RE = /\.(js|mjs|cjs)$/, DOT_SLASH_RE = /^\.\//, POSIX_RE = /\\/g, PKG_SUBPATH = subpath(PKG_JSON),
     SCRIPT_FILE_RE = /([\p{L}\p{N}_.\-/\\]+\.(?:js|cjs|mjs))/u,
-    SNAPSHOT_FILE = '.deps-snapshot.json', SKIP_PKGS = new Set(['esbuild', '@esbuild', 'node-gyp-build',
+    SKIP_PKGS = new Set(['esbuild', '@esbuild', 'node-gyp-build',
         'node-gyp-build-optional-packages', 'node-addon-api', 'node']),
     EXCLUDE_NAMES = new Set([PKG_JSON, 'package-lock.json', NM_DIR, '.git', '.gitignore', '.npmignore']),
     PLATFORM_MAP = {
@@ -816,6 +821,6 @@ const SELF_HASH = (() => {
 })();
 
 export {
-    CUR_ARCH, CUR_PLAT, clearVerified, findFileRecursive, getElectronCacheDir, markVerified, optimizeNodeModules,
-    promotePeerDeps, SELF_HASH, SNAPSHOT_FILE
+    CUR_ARCH, CUR_PLAT, SNAPSHOT_FILE, SELF_HASH, clearVerified, findFileRecursive, getElectronCacheDir, markVerified,
+    optimizeNodeModules, promotePeerDeps
 };

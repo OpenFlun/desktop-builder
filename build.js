@@ -8,11 +8,17 @@ import { execa } from 'execa';
 import { minimatch } from 'minimatch';
 import AdmZip from 'adm-zip';
 import {
-    CUR_ARCH, CUR_PLAT, clearVerified, findFileRecursive, getElectronCacheDir, markVerified, optimizeNodeModules,
-    promotePeerDeps, SELF_HASH, SNAPSHOT_FILE
+    CUR_ARCH, CUR_PLAT, SNAPSHOT_FILE, SELF_HASH, clearVerified, findFileRecursive, getElectronCacheDir, markVerified,
+    optimizeNodeModules, promotePeerDeps
 } from './optimize-node-modules.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url)), require = createRequire(import.meta.url),
+/**
+ * 临时构建目录根路径
+ * >查看定义:@see {@link TEMP_ROOT}
+ * @type {string}
+ */
+const TEMP_ROOT = path.join(os.tmpdir(), 'desktop-builder-build'), require = createRequire(import.meta.url),
+    __dirname = path.dirname(fileURLToPath(import.meta.url)),
     CACHE_DIR = path.join(os.homedir(), '.electron-builder-cache'),
     /**
      * 判断是否为非空普通对象(排除 null/数组/字符串等)
@@ -244,7 +250,7 @@ const build = async () => {
             })(); // allowScripts 预处理
     await fs.ensureDir(CACHE_DIR);
     process.env.ELECTRON_BUILDER_CACHE = CACHE_DIR, process.env.ELECTRON_CACHE = CACHE_DIR;
-    const tempDir = path.join(os.tmpdir(), 'desktop-builder-build', path.basename(process.cwd()));
+    const tempDir = path.join(TEMP_ROOT, path.basename(process.cwd()));
     await fs.ensureDir(tempDir);
     // 清理临时目录,保留 node_modules 和依赖快照
     const items = await fs.readdir(tempDir).catch(() => []);
@@ -884,4 +890,4 @@ Name: "defenderExclusion"; Description: "将应用加入 Windows Defender 排除
         else console.warn(chalk.yellow('[警告] 未找到构建产物;'));
     }
 };
-export { build };
+export { TEMP_ROOT, build };

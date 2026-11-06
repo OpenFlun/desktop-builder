@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import chalk from 'chalk';
-import { build } from '../build.js';
+import fs from 'fs-extra';
+import { TEMP_ROOT, build } from '../build.js';
 import { copyFile } from '../copy-files.js';
 
 const [, , sub] = process.argv,
@@ -13,6 +14,7 @@ const [, , sub] = process.argv,
       grp('命令'),
       cmd('build', '构建桌面应用程序'),
       cmd('example', '重新生成 desktopAppConfig.js 与 build/ 到项目根'),
+      cmd('clean', '清理临时构建目录'),
       cmd('help', '显示本帮助'), '',
       grp('build 选项'),
       cmd('--debug', '显示详细日志,含每个包的处理与 electron-builder 完整输出'), '',
@@ -24,6 +26,21 @@ const [, , sub] = process.argv,
   main = async () => {
     if (!sub || sub === 'help' || sub === '-h' || sub === '--help') return printHelp(), process.exit(0);
     if (sub === 'example') return copyFile() ? process.exit(0) : process.exit(1);
+    if (sub === 'clean') {
+      const targets = [{ label: '临时构建目录', path: TEMP_ROOT }];
+      for (const t of targets) {
+        if (!await fs.pathExists(t.path)) {
+          console.log(chalk.gray('    ' + t.label + '文件不存在,无需清理'));
+          continue;
+        }
+        try {
+          await fs.remove(t.path), console.log(chalk.green('    ' + t.label + '清理成功'));
+        } catch (err) {
+          console.log(chalk.red('    ' + t.label + '清理失败: ' + err.message));
+        }
+      }
+      return console.log(chalk.greenBright('\n  清理执行完成'));
+    }
     if (sub === 'build') {
       if (process.argv.includes('--debug')) process.env.OPTIMIZE_DEBUG = '1';
       return await build();
