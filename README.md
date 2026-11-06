@@ -1196,7 +1196,7 @@ ISC © 2026, flun
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request;
-项目地址:[https://github.com/OpenFlun/desktop-builder](https://github.com/OpenFlun/desktop-builder)
+项目地址:[github](https://github.com/OpenFlun/desktop-builder)
 中国镜像:[gitee](https://gitee.com/OpenFlun/desktop-builder)
 
 [npm-version-img]: https://img.shields.io/npm/v/@flun/desktop-builder.svg
