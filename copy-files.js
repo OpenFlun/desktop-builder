@@ -1,6 +1,6 @@
+import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
-import chalk from 'chalk';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url), __dirname = path.dirname(__filename),

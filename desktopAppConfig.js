@@ -6,8 +6,10 @@
  * npx desktop-builder help  # 查看帮助
  * ```
  * 所有路径相对于项目根目录
+ *
+ * >查看定义:@see {@link desktopAppConfig}
  */
-export default {
+const desktopAppConfig = {
 	// 必填字段:serverPath,appUrl;
 	serverPath: './server.js',           // 网站启动脚本路径
 	appUrl: 'http://www.abc.com:7296',   // 网站访问地址
@@ -382,3 +384,5 @@ export default {
 		'latest.yml'
 	]
 };
+
+export default desktopAppConfig;

@@ -10,8 +10,8 @@ import { TEMP_ROOT, build } from './build.js';
  * // 文件导出内容
  * const CUR_ARCH;        // 当前系统架构
  * const CUR_PLAT;        // 当前系统平台
- * const SNAPSHOT_FILE;   // 依赖快照文件名
  * const SELF_HASH;       // 当前优化文件的 SHA256 前 16 位(缓存指纹)
+ * const SNAPSHOT_FILE;   // 依赖快照文件名
  * clearVerified();       // 清除快照中的 verified 标记
  * findFileRecursive();   // 递归查找文件
  * getElectronCacheDir(); // 获取 electron 缓存目录
@@ -19,7 +19,7 @@ import { TEMP_ROOT, build } from './build.js';
  * optimizeNodeModules(); // 执行 node_modules 六阶段优化
  * promotePeerDeps();     // 将生产依赖树中实际存在的 peer 依赖提升为根依赖
  * ```
- * >查看定义:@see {@link CUR_ARCH},{@link CUR_PLAT},{@link SNAPSHOT_FILE},{@link SELF_HASH},
+ * >查看定义:@see {@link CUR_ARCH},{@link CUR_PLAT},{@link SELF_HASH},{@link SNAPSHOT_FILE},
  * {@link clearVerified},{@link findFileRecursive},{@link getElectronCacheDir},{@link markVerified},
  * {@link optimizeNodeModules},{@link promotePeerDeps}
  */

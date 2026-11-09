@@ -1,12 +1,12 @@
-import { app, BrowserWindow, Menu, shell } from 'electron';
-import { spawn, exec } from 'child_process';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { exec, spawn } from 'child_process';
+import { app, shell, BrowserWindow, Menu } from 'electron';
 import fs from 'fs';
 import http from 'http';
 import https from 'https';
-import net from 'net';
 import { createRequire } from 'module';
+import net from 'net';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 
 // --------------------- 全局变量 ---------------------
@@ -200,7 +200,7 @@ const require = createRequire(import.meta.url), __dirname = path.dirname(fileURL
         });
         await mainWindow.loadURL(TARGET_URL), loadRetryCount = 0;
         setTimeout(() => {
-            if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+          if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
         }, 3000);
 
         mainWindow.on('closed', () => mainWindow = null);
@@ -273,6 +273,4 @@ process.on('uncaughtException', err => {
   const msg = '未捕获异常: ' + err.message + '\n' + err.stack;
   log('[错误] ' + msg), app.quit();
 });
-app.on('will-quit', () => {
-  killServerProcess(), stopFocusRestore();
-});
+app.on('will-quit', () => { killServerProcess(), stopFocusRestore(); });

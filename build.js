@@ -1,14 +1,14 @@
-import fs from 'fs-extra';
-import path from 'path';
-import os from 'os';
-import { fileURLToPath } from 'url';
-import { createRequire } from 'module';
+import AdmZip from 'adm-zip';
 import chalk from 'chalk';
 import { execa } from 'execa';
+import fs from 'fs-extra';
 import { minimatch } from 'minimatch';
-import AdmZip from 'adm-zip';
+import { createRequire } from 'module';
+import os from 'os';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import {
-    CUR_ARCH, CUR_PLAT, SNAPSHOT_FILE, SELF_HASH, clearVerified, findFileRecursive, getElectronCacheDir, markVerified,
+    CUR_ARCH, CUR_PLAT, SELF_HASH, SNAPSHOT_FILE, clearVerified, findFileRecursive, getElectronCacheDir, markVerified,
     optimizeNodeModules, promotePeerDeps
 } from './optimize-node-modules.js';
 

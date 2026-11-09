@@ -1,9 +1,9 @@
-import fs from 'fs-extra';
-import path from 'path';
-import os from 'os';
-import { createRequire } from 'module';
-import { execSync } from 'child_process';
 import chalk from 'chalk';
+import { execSync } from 'child_process';
+import fs from 'fs-extra';
+import { createRequire } from 'module';
+import os from 'os';
+import path from 'path';
 
 /**
  * 当前系统平台:CUR_ARCH
@@ -584,10 +584,9 @@ const getElectronCacheDir = () => {
                     }
                     const platBad = plat && !myPlat.includes(plat), archBad = plat && arch && !myArch.includes(arch);
                     if (platBad || archBad) {
-                        if (process.env.OPTIMIZE_DEBUG) {
-                            const rel = toPosix(path.relative(nmDir, full));
-                            console.log(chalk.gray(`  ✓ ${rel} (${platBad ? '平台不符: ' + plat : '架构不符: ' + arch})`));
-                        }
+                        if (process.env.OPTIMIZE_DEBUG)
+                            console.log(chalk.gray(`  ✓ ${toPosix(path.relative(nmDir, full))} ` +
+                                `(${platBad ? '平台不符: ' + plat : '架构不符: ' + arch})`));
                         delFile(full);
                     }
                 }
@@ -821,6 +820,6 @@ const SELF_HASH = (() => {
 })();
 
 export {
-    CUR_ARCH, CUR_PLAT, SNAPSHOT_FILE, SELF_HASH, clearVerified, findFileRecursive, getElectronCacheDir, markVerified,
+    CUR_ARCH, CUR_PLAT, SELF_HASH, SNAPSHOT_FILE, clearVerified, findFileRecursive, getElectronCacheDir, markVerified,
     optimizeNodeModules, promotePeerDeps
 };
